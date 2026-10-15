@@ -1,0 +1,12 @@
+{
+  "name": "labeltruth-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "cd frontend && npm test",
+    "test:backend": "cd backend && python -m pytest tests/test_main.py -v",
+    "test:frontend": "cd frontend && npm test",
+    "lint": "cd frontend && npm run lint",
+    "build": "cd frontend && npm run build"
+  }
+}

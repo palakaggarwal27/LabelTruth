@@ -136,6 +136,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
           <form onSubmit={handleSend} className="p-3 border-t border-zinc-200 flex gap-2 bg-white">
             <input
               type="text"
+              aria-label="Ask nutrition and FSSAI question"
               placeholder="E.g., Is maltodextrin safe for my diabetes?"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -143,6 +144,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
             />
             <button
               type="submit"
+              aria-label="Send message to Nutrition AI"
               disabled={loading || !input.trim()}
               className="p-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md disabled:opacity-40"
             >

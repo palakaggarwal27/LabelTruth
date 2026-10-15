@@ -48,6 +48,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
     >
       <input
         ref={inputRef}
+        id="label-image-upload"
+        aria-label="Upload food label image or screenshot"
         type="file"
         accept="image/*"
         onChange={handleChange}
