@@ -1,0 +1,58 @@
+import axios from 'axios';
+import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult } from '@/types';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+});
+
+export const validateCondition = async (condition: string): Promise<ConditionValidationResult> => {
+  const res = await apiClient.post<ConditionValidationResult>('/api/validate-condition', {
+    condition,
+  });
+  return res.data;
+};
+
+export const fetchStats = async (): Promise<SurveyStatsResponse> => {
+  const res = await apiClient.get<SurveyStatsResponse>('/api/stats');
+  return res.data;
+};
+
+export const fetchPresets = async (): Promise<PresetProduct[]> => {
+  const res = await apiClient.get<PresetProduct[]>('/api/presets');
+  return res.data;
+};
+
+export const analyzeLabel = async (
+  imageFile: Blob | File,
+  userProfile: UserProfile
+): Promise<LabelAnalysisResult> => {
+  const formData = new FormData();
+  // Provide both 'image' and 'file' field aliases for robust multipart handling
+  formData.append('image', imageFile, 'label_capture.jpg');
+  formData.append('file', imageFile, 'label_capture.jpg');
+  formData.append('user_profile', JSON.stringify(userProfile));
+
+  const res = await apiClient.post<LabelAnalysisResult>('/api/analyze-label', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
+};
+
+export const sendChatMessage = async (
+  message: string,
+  history: { role: string; content: string }[],
+  userProfile?: UserProfile,
+  productContext?: LabelAnalysisResult | null
+): Promise<string> => {
+  const res = await apiClient.post<{ reply: string }>('/api/chat', {
+    message,
+    history,
+    user_profile: userProfile,
+    product_context: productContext,
+  });
+  return res.data.reply;
+};

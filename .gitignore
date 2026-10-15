@@ -1,0 +1,22 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node.js and Next.js
+**/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Tooling and OS files
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+.vscode/
