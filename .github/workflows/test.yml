@@ -18,11 +18,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -33,7 +32,7 @@ jobs:
         env:
           PYTHONPATH: .
         run: |
-          pytest tests/test_main.py -v
+          python -m pytest tests/test_main.py -v
 
   frontend-tests:
     name: Frontend Vitest Suite
