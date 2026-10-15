@@ -140,6 +140,38 @@ npm run start
 | `/api/validate-condition` | `POST` | `{"condition": string}` | AI condition/additive validation |
 | `/api/chat` | `POST` | `{"message": string, "history": [...], "user_profile": {...}, "product_context": {...}}` | Clinical grounded AI chatbot |
 
+## 🧪 Testing
+
+LabelTruth includes a comprehensive automated test suite for both backend APIs and frontend UI components:
+
+### Run Backend Tests (Pytest)
+Backend unit tests mock external Gemini Vision and GenAI network calls via `pytest-mock` so they execute 100% offline without requiring an active API key or consuming quota:
+```bash
+cd backend
+python -m pytest tests/test_main.py -v
+```
+**Tests covered:**
+- `test_health_check`: Verifies service status and heartbeat.
+- `test_get_survey_and_fssai_stats`: Validates survey data ($N=51$) and FSSAI regulation schemas.
+- `test_get_demo_presets`: Verifies rapid demonstration presets.
+- `test_validate_condition`: Tests AI-driven health condition/additive verification with mock responses.
+- `test_chat_endpoint`: Tests scope-locking and formatted nutritionist replies.
+- `test_analyze_label_endpoint`: Tests multipart image upload parsing and structured FSSAI audits.
+
+---
+
+### Run Frontend Tests (Vitest & React Testing Library)
+Frontend smoke and component tests verify rendering and accessibility:
+```bash
+cd frontend
+npm test
+```
+
+---
+
+### Continuous Integration (CI)
+GitHub Actions automatically runs both backend Pytest and frontend Vitest suites on every push and pull request via [`.github/workflows/test.yml`](.github/workflows/test.yml).
+
 ---
 
 ## ⚖️ Legal & Medical Disclaimer
