@@ -145,7 +145,3 @@ npm run start
 ## ⚖️ Legal & Medical Disclaimer
 > **Disclaimer**: LabelTruth is an AI-powered educational and consumer protection tool designed to decode food labels, ingredient lists, and FSSAI regulatory compliance. It does not provide clinical medical diagnosis, treatment, or medical nutrition therapy. Always consult a qualified physician or registered dietitian for personal medical conditions.
 
----
-
-## 📄 License
-This project is licensed under the [MIT License](LICENSE).
