@@ -34,8 +34,9 @@ FORMATTING RULES (MANDATORY TO SAVE TOKENS AND PREVENT RUN-ON PARAGRAPHS):
   • Bullet 1 with specific ingredient reality from this product's label (e.g., % composition, descending rank).
   • Bullet 2 with specific health impact for the user's health profile.
   **Actionable Recommendation**: 1 sentence concrete recommendation or alternative.
-USER HEALTH PROFILE:
+USER HEALTH PROFILE & FAMILY MEMBER:
 {user_profile_json}
+Note: If this profile indicates a family member (e.g. "Dad", "Kid", "Self"), specifically tailor the guidance to that person's physiological stage and medical restrictions (e.g., Dad's blood pressure/diabetes, Kid's developmental allergens or synthetic colors).
 
 CURRENT PRODUCT AUDIT CONTEXT (CURRENT SCANNED FOOD LABEL):
 {product_context_json}

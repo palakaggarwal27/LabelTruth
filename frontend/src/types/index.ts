@@ -13,6 +13,31 @@ export interface HealthierAlternative {
   key_benefit: string;
   price_comparison: string;
   personalized_fit: string;
+  store_url?: string;
+}
+
+export interface ProteinAudit {
+  declared_protein_g: number;
+  usable_protein_g: number;
+  pdcaas_score: number;
+  primary_sources: string[];
+  protein_to_calorie_percent: number;
+  amino_spiking_risk: boolean;
+}
+
+export interface ClaimVerification {
+  claim: string;
+  status: 'VERIFIED' | 'MISLEADING' | 'DECEPTIVE';
+  explanation: string;
+}
+
+export interface NutrientIntegrityMatrix {
+  protein?: ProteinAudit;
+  fiber_type?: string;
+  palm_oil_present?: boolean;
+  hidden_sugars_flagged?: string[];
+  sodium_and_preservatives_risk?: string;
+  claims_matrix?: ClaimVerification[];
 }
 
 export interface LabelAnalysisResult {
@@ -24,9 +49,15 @@ export interface LabelAnalysisResult {
   fssai_violations: string[];
   ingredient_breakdown: IngredientItem[];
   healthier_alternative: HealthierAlternative;
+  clean_alternatives?: HealthierAlternative[];
+  nutrient_integrity?: NutrientIntegrityMatrix;
+  is_food_label?: boolean;
+  label_type?: 'FRONT_OF_PACK' | 'BACK_OF_PACK' | 'FULL_PANEL' | 'NOT_A_LABEL';
 }
 
 export interface UserProfile {
+  id?: string;
+  name?: string; // e.g. "Self", "Dad", "Kid"
   dietary_preferences: string[];
   medical_conditions: string[];
   allergies: string[];
@@ -58,6 +89,8 @@ export interface FSSAICardData {
   regulation: string;
   name: string;
   description: string;
+  impact?: string;
+  loophole_exposed?: string;
 }
 
 export interface INSCardData {
@@ -65,12 +98,15 @@ export interface INSCardData {
   name: string;
   function: string;
   risk: string;
+  disease_contraindications?: string[];
 }
 
 export interface SurveyStatsResponse {
   sample_size: number;
+  national_sample_size?: number;
   location: string;
   key_stats: StatCardData[];
+  national_stats?: StatCardData[];
   fssai_regulations: FSSAICardData[];
   harmful_ins_codes: INSCardData[];
 }
@@ -81,4 +117,3 @@ export interface ScannedHistoryItem {
   image_preview?: string;
   result: LabelAnalysisResult;
 }
-

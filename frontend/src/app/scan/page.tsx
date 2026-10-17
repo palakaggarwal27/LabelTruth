@@ -14,6 +14,8 @@ import { analyzeLabel } from '@/lib/api';
 import { LabelAnalysisResult, PresetProduct, ScannedHistoryItem } from '@/types';
 import { AlertCircle, RefreshCw, ScanLine, History } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
+import { HealthProfileManager } from '@/components/HealthProfileManager';
+import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
 
 const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 
@@ -125,21 +127,9 @@ export default function ScanPage() {
           </p>
         </div>
 
-        {/* Active Profile Summary */}
-        <div className="p-3 bg-white border border-zinc-200 rounded-md text-xs self-start">
-          <div className="font-semibold text-zinc-800 flex items-center justify-between gap-4">
-            <span>Active Memory Profile</span>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="text-zinc-600 hover:text-zinc-900 underline text-[11px]"
-            >
-              Edit
-            </button>
-          </div>
-          <div className="text-[11px] text-zinc-500 mt-1 line-clamp-1">
-            Conditions: {profile.medical_conditions.join(', ') || 'None'} | Diet: {profile.dietary_preferences.join(', ') || 'Standard'}
-          </div>
-        </div>
+      {/* Active Household Profile Switcher */}
+      <div className="mb-6">
+        <HealthProfileManager />
       </div>
 
       {/* Tab Switcher */}
@@ -243,7 +233,12 @@ export default function ScanPage() {
 
           <IngredientAccordion ingredients={result.ingredient_breakdown} />
 
-          <AlternativeCard alternative={result.healthier_alternative} />
+          <NutrientMatrix matrix={result.nutrient_integrity} />
+
+          <AlternativeCard 
+            alternative={result.healthier_alternative} 
+            cleanAlternatives={result.clean_alternatives}
+          />
         </div>
       )}
 
