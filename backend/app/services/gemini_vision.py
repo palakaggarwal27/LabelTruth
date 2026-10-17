@@ -28,7 +28,8 @@ AUDIT CRITERIA:
    - Flag harmful INS codes: INS 150d (Caramel Colour IV, 4-MEI carcinogen risk), INS 621 (MSG), INS 627/631 (flavour enhancers), INS 211 (Sodium Benzoate), INS 102 (Tartrazine), INS 320 (BHA), Maltodextrin (GI 105-110).
 
 3. Nutrient Card Breakdown & Nutrient Integrity Audit:
-   - Detailed Nutritional Panel: Parse each nutrient on the nutrition table (Calories, Total Fat, Saturated Fat, Trans Fat, Total Carbohydrates, Added Sugar, Sodium, etc.) with exact per 100g amounts, % Daily Value (% RDA), and a sharp forensic clinical evaluation.
+   - Detailed Nutritional Panel (MANDATORY): You MUST ALWAYS construct and return the complete "nutrition_card" object with values for serving_size, calories_kcal, total_fat_g, saturated_fat_g, trans_fat_g, total_carbs_g, added_sugars_g, sodium_mg, and itemized breakdown list.
+   - If the uploaded image only shows the ingredient list or front-of-pack and lacks a visible nutrition table, use the ONLINE BACK-OF-PACK SUPPLEMENTARY DATA or scientifically estimate the exact nutritional values per 100g based on the ingredient composition and product category. Do NOT return an empty or null nutrition_card!
    - Protein Reality & PDCAAS: Calculate declared protein, estimate usable bioavailable protein using PDCAAS score (e.g. Soy=0.91, Whey=1.0, Wheat/Gluten=0.25-0.4), identify protein sources, protein-to-calorie percentage, and amino spiking risk (added free Glycine/Taurine).
    - Fiber Quality: Classify fiber as Whole Grain vs. synthetic isolate (polydextrose, chicory root inulin).
    - Fat Audit: Expose Palm Oil or trans fats hidden behind "0% Cholesterol" or "Light" claims.

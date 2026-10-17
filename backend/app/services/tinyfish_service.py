@@ -9,28 +9,41 @@ class TinyFishService:
     def __init__(self):
         self.api_key = TINYFISH_API_KEY
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "X-API-Key": self.api_key,
             "Content-Type": "application/json"
         }
 
     async def search_product(self, query: str) -> Optional[str]:
-        """Search for a product on quick-commerce via TinySearch"""
+        """Search for a product on quick-commerce or grocery sites via TinySearch"""
         if not self.api_key:
             return None
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.post(
-                    "https://api.search.tinyfish.ai/search",
-                    headers=self.headers,
-                    json={"query": f"{query} Blinkit Zepto ingredients nutritional information", "limit": 3}
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    results = data.get("results", [])
-                    if results:
-                        return results[0].get("url")
-        except Exception as e:
-            logger.warning(f"TinySearch query failed: {e}")
+        
+        search_queries = [
+            f"{query} ingredients nutrition facts",
+            f"site:world.openfoodfacts.org {query}",
+            f"{query} Blinkit Zepto Amazon"
+        ]
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for q in search_queries:
+                try:
+                    res = await client.get(
+                        "https://api.search.tinyfish.ai",
+                        headers={"X-API-Key": self.api_key},
+                        params={"query": q}
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        results = data.get("results", [])
+                        if results:
+                            # Prioritize OpenFoodFacts, Blinkit, BigBasket, or Amazon URLs
+                            for item in results:
+                                u = item.get("url", "")
+                                if any(dom in u for dom in ["openfoodfacts", "blinkit", "bigbasket", "amazon", "zepto"]):
+                                    return u
+                            return results[0].get("url")
+                except Exception as e:
+                    logger.warning(f"TinySearch query '{q}' error: {e}")
         return None
 
     async def fetch_product_details(self, url: str) -> Optional[Dict[str, Any]]:
@@ -38,14 +51,17 @@ class TinyFishService:
         if not self.api_key or not url:
             return None
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=25.0) as client:
                 res = await client.post(
-                    "https://api.fetch.tinyfish.ai/fetch",
-                    headers=self.headers,
-                    json={"url": url}
+                    "https://api.fetch.tinyfish.ai",
+                    headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
+                    json={"urls": [url]}
                 )
                 if res.status_code == 200:
-                    return res.json()
+                    data = res.json()
+                    results = data.get("results", [])
+                    if results:
+                        return results[0]
         except Exception as e:
             logger.warning(f"TinyFetch content extraction failed: {e}")
         return None
@@ -56,7 +72,7 @@ class TinyFishService:
         if url:
             data = await self.fetch_product_details(url)
             if data:
-                return data.get("content", "") or data.get("text", "")
+                return data.get("text", "") or data.get("content", "")
         return None
 
 tinyfish_service = TinyFishService()

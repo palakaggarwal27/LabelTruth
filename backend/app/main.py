@@ -33,6 +33,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import hashlib
+from typing import Optional, Dict
+
+AUDIT_CACHE: Dict[str, LabelAnalysisResult] = {}
+
+def compute_audit_hash(content: bytes, profile_str: str) -> str:
+    h = hashlib.sha256()
+    h.update(content)
+    h.update(profile_str.encode('utf-8'))
+    return h.hexdigest()
+
 @app.get('/api/health')
 def health_check():
     return {'status': 'healthy', 'service': 'LabelTruth'}
@@ -71,6 +82,12 @@ async def analyze_label(
         if not image_bytes:
             raise HTTPException(status_code=400, detail='Empty image file received.')
         
+        # Check repeat audit hash cache
+        cache_key = compute_audit_hash(image_bytes, user_profile)
+        if cache_key in AUDIT_CACHE:
+            logger.info("Serving audit result from SHA-256 memory cache (zero credits used)")
+            return AUDIT_CACHE[cache_key]
+
         result = await gemini_vision_service.analyze_label_image(image_bytes, profile)
 
         # 1. Image Validation: Reject non-food images
@@ -109,6 +126,8 @@ async def analyze_label(
             except Exception as tf_err:
                 logger.warning(f"TinyFish partial photo enrichment fallback: {tf_err}")
 
+        # Store in cache
+        AUDIT_CACHE[cache_key] = result
         return result
     except HTTPException:
         raise
@@ -139,16 +158,23 @@ async def smart_scan(
 
         # Scenario 2: Text / Product name / Shared URL
         if query and query.strip():
+            clean_query = query.strip()
+            query_cache_key = compute_audit_hash(clean_query.lower().encode('utf-8'), user_profile)
+            if query_cache_key in AUDIT_CACHE:
+                logger.info(f"Serving query audit for '{clean_query}' from SHA-256 cache (zero credits used)")
+                return AUDIT_CACHE[query_cache_key]
+
             from app.services.tinyfish_service import tinyfish_service
             online_content = ""
-            if query.startswith("http://") or query.startswith("https://"):
-                data = await tinyfish_service.fetch_product_details(query.strip())
+            if clean_query.startswith("http://") or clean_query.startswith("https://"):
+                data = await tinyfish_service.fetch_product_details(clean_query)
                 if data:
-                    online_content = str(data)
+                    online_content = str(data.get("text", "") or data.get("content", "") or data)
             else:
-                online_content = await tinyfish_service.search_and_fetch_bop(query.strip()) or ""
+                online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
 
-            result = await gemini_vision_service.analyze_text_query(query.strip(), profile, online_content)
+            result = await gemini_vision_service.analyze_text_query(clean_query, profile, online_content)
+            AUDIT_CACHE[query_cache_key] = result
             return result
 
         raise HTTPException(status_code=400, detail="Please provide either a product label photo, product name, or quick-commerce link.")
