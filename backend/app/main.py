@@ -133,7 +133,8 @@ async def smart_scan(
         # Scenario 1: Image provided
         if image:
             image_bytes = await image.read()
-            if image_bytes:
+            if image_bytes and len(image_bytes) > 0:
+                await image.seek(0)
                 return await analyze_label(image=image, user_profile=user_profile)
 
         # Scenario 2: Text / Product name / Shared URL

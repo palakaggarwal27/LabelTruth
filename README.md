@@ -18,39 +18,43 @@ Front-of-pack claims in India frequently deceive consumers through sophisticated
 
 ## ✨ Core Features
 
-### 1. 📷 Dual-Input Forensic Label Scanner (`/scan`)
+### 1. 📷 Smart Hybrid Scanner & TinyFish Fallback Engine (`/scan`)
+- **Direct Text Search**: No photo? Type any packaged product name (e.g. *"Bournvita Little Champs"*, *"Epigamia Greek Yogurt"*) or paste a quick-commerce URL to auto-extract packaging data.
 - **Live Camera Stream**: Real-time camera feed via HTML5 `navigator.mediaDevices.getUserMedia` for instant packaging capture.
 - **File Upload / Drag-and-Drop**: Upload screenshots from quick-commerce apps (Blinkit, Zepto, Swiggy Instamart, Amazon).
-- **Preset Demonstration Suite**: Instant 1-click presets (Brown Bread, Zero-Sugar Drink, Hazelnut Spread) for quick testing.
+- **Comprehensive Partial Photo Logic**:
+  - *Front-of-pack only*: Automatically extracts product name and invokes TinyFish to pull back-of-pack ingredients and nutrition.
+  - *Ingredients only*: Detects absence of nutrition facts and fetches the complete nutritional table online.
+  - *Nutrition card only*: Detects absence of ingredients and fetches the full ingredient breakdown online.
+- **Non-Food Image Guard**: Gemini Vision rejects irrelevant non-food photos (e.g., animals, cars, walls) with a clean HTTP 400 rejection.
 
-### 2. 🧠 Multimodal Gemini Vision Audit (`POST /api/analyze-label`)
-- **FSSAI 2020 Compliance Engine**: Automatically audits Regulation 5(2)(b) descending weight order, checks prohibited front-of-pack claims, and flags deceptive marketing.
-- **INS Code Decoder**: Analyzes industrial food additives (e.g., INS 150d Caramel Colour IV, INS 621 MSG, INS 102 Tartrazine, INS 211 Sodium Benzoate, Maltodextrin).
-- **Traffic Light Health Scoring**: Generates an evidence-based 0–100 Health Score, clear layperson summary, itemized ingredient concern levels (`LOW`, `MEDIUM`, `HIGH`), and clean Indian alternatives.
+### 2. 🐟 TinyFish AI Web Search & Extraction Integration
+LabelTruth integrates **TinyFish AI** as an autonomous web agent layer for real-time quick-commerce search and back-of-pack data extraction:
+- **TinySearch (`api.search.tinyfish.ai/search`)**: Queries Indian quick-commerce platforms (Blinkit, Zepto, Swiggy Instamart) with targeted product search queries to locate verified product listing URLs.
+- **TinyFetch (`api.fetch.tinyfish.ai/fetch`)**: Deep-fetches and parses unstructured DOM content from online product listings, isolating ingredient lists, allergen statements, and nutrition tables.
+- **Autonomous BOP Enrichment**: Seamlessly bridges the gap when users only upload a marketing front label or provide a product title.
 
-### 3. 🛡️ Personalized Health Memory Profile
-- **Device-Local Storage**: Stored client-side in `localStorage` for complete data privacy.
-- **Clinical & Metabolic Conditions**: Type-2 Diabetes, Celiac Disease / Gluten Sensitivity, Hypertension (High BP), Lactose Intolerance, Hyperuricemia (Gout), Chronic Kidney Disease, PKU, High Cholesterol, NAFLD.
-- **Allergies & Sensitivities**: Peanuts, Tree Nuts, Soy, Shellfish, Sesame, Gluten, Dairy, Sulfites, Eggs.
-- **Dietary Choices**: Vegan, Vegetarian, Jain, Halal, Eggless.
-- **AI-Verified Custom Additives**: Add custom ingredients or conditions (e.g. *Maltitol*, *Tartrazine*, *Histamine Intolerance*) with real-time AI validation via Gemini Flash (`POST /api/validate-condition`) and dedicated badge management with removal controls.
+### 3. 📊 Full Nutrient Card Decoder & Bioavailability Engine
+- **Decoded Nutrition Facts Panel**: Parses energy, total fats, saturated fat, trans fat, total carbohydrates, added sugars, and sodium per 100g.
+- **Line-by-Line Clinical Evaluation**: Computes `% RDA / Daily Value` and delivers forensic clinical commentary on excess sugars, sodium spikes, and industrial additives.
+- **Protein Reality & PDCAAS Bioavailability**: Calculates declared protein vs. actual usable bioavailable protein adjusted by PDCAAS score (0.0 to 1.0), audits protein-to-calorie percentage, and exposes non-protein nitrogen amino spiking (added free glycine/taurine).
+- **Hidden Fats & Sugars Matrix**: Exposes palm oil hidden behind "0% Cholesterol" claims and detects disguised sugar aliases (maltodextrin, invert syrup, liquid glucose).
 
-### 4. 💬 Grounded Clinical AI Chatbot
-- Sticky floating clinical assistant in `/scan`.
-- **Product-Grounded Intelligence**: Automatically reads the currently scanned label's product name, health score, FSSAI flags, and ingredient breakdown to answer follow-up queries specifically tailored to the active product.
-- **Strict Scope Locking**: Politely rejects off-topic queries (coding, trivia, sports) to maintain clinical focus and conserve tokens.
-- **Structured Output**: Enforces concise, clinical takeaways, key facts with biological mechanisms, and actionable recommendations.
+### 4. 👨‍👩‍👧 Multi-Profile Household System
+- **Household Member Switcher**: Seamlessly switch between active family profiles directly on the scan screen:
+  - 👤 **Self**: Active / Fitness focus (monitors PDCAAS protein, artificial additives).
+  - 👴 **Dad**: Type-2 Diabetes & Hypertension (monitors glycemic index, sodium, maltodextrin).
+  - 👧 **Kid**: Allergies & Clean Growth (strictly flags artificial colorants INS 102/150d, peanuts, soy).
+- **Add Family Members**: Easily create custom profiles (e.g. Mom, Toddler, Grandma) with dedicated dietary and clinical restrictions.
+- **Dynamic Profile Badges**: Real-time tags reflect actual conditions, allergies, and custom avoidances rather than static labels.
 
-### 5. 📂 Previously Scanned Products Tab
-- Automatically logs all scanned products to local device storage with label preview thumbnails.
-- Shows timestamp, health score (0–100), verdict badge (`SAFE FOR YOU`, `CAUTION`, `AVOID`), and flagged violations.
-- One-click **"View Full Insights"** to re-open the complete forensic breakdown and reconnect the AI Chatbot context.
-- Dedicated **"Clear History"** action to reset local history.
+### 5. 🛒 Clean Whole-Food Alternatives & Multi-Store Quick-Commerce
+- **Clean Indian Swaps**: Returns 2–3 wholesome, minimally processed Indian alternatives for flagged ultra-processed products.
+- **Multi-Store Availability**: Instant 1-click buy buttons across **Blinkit**, **Zepto**, **Swiggy Instamart**, and **Amazon Fresh**.
+- **City & Pincode Localization**: Live filter customizes store search links with user location for verified delivery availability.
 
-### 6. 📊 Cited FSSAI Literacy Hub (`/`)
-- Interactive modules explaining key FSSAI 2020 regulations.
-- Cited statistic cards directly grounded in primary survey data ($N=51$) and research literature.
-- Access to the original research report (`pm hve report .pdf`) and raw survey dataset (`The Indian Food Label Challenge (Responses).xlsx`).
+### 6. 💬 Context-Aware Clinical AI Chatbot
+- Sticky floating clinical assistant grounded in both the active product audit and the active family member's clinical context (e.g. evaluating for Dad with Type-2 Diabetes).
 
 ---
 
@@ -58,11 +62,13 @@ Front-of-pack claims in India frequently deceive consumers through sophisticated
 
 ```mermaid
 flowchart LR
-    A["Next.js 14 Frontend<br/>(Tailwind CSS, Lucide, Axios)"] -->|"Image + User Profile"| B["FastAPI Backend<br/>(Python 3.10+)"]
-    B -->|"Prompt + Image Bytes"| C["Google Gemini Vision API<br/>(gemini-3.1-flash-lite)"]
-    C -->|"Structured JSON"| B
+    A["Next.js 14 Frontend<br/>(Tailwind CSS, Lucide, Axios)"] -->|"Image / Query + Profile"| B["FastAPI Backend<br/>(Python 3.10+)"]
+    B -->|"Missing BOP / Name Query"| E["TinyFish AI<br/>(TinySearch & TinyFetch)"]
+    E -->|"Web Packaging Text"| B
+    B -->|"Prompt + Image + BOP Data"| C["Google Gemini Vision API<br/>(gemini-3.1-flash-lite)"]
+    C -->|"Structured Audit JSON"| B
     B -->|"LabelAnalysisResult"| A
-    A -->|"LocalStorage"| D["Health Profile &<br/>Scan History Cache"]
+    A -->|"LocalStorage"| D["Household Profiles &<br/>Scan History Cache"]
 ```
 
 - **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS ("Editorial Minimalist / Modern Clinical" theme), Lucide Icons, Axios.
