@@ -12,7 +12,7 @@ import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan } from '@/lib/api';
 import { LabelAnalysisResult, PresetProduct, ScannedHistoryItem } from '@/types';
-import { AlertCircle, RefreshCw, ScanLine, History } from 'lucide-react';
+import { AlertCircle, RefreshCw, ScanLine, History, Trash2 } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
 import { HealthProfileManager } from '@/components/HealthProfileManager';
 import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
@@ -106,10 +106,9 @@ export default function ScanPage() {
     setError(null);
     const normalized = queryText.trim().toLowerCase();
 
-    // 1. Check client-side history cache to save credits if user already audited this item
+    // 1. Check client-side history cache only on exact product name match
     const cachedItem = history.find(
-      (h) => h.result.product_name.toLowerCase() === normalized || 
-             h.result.product_name.toLowerCase().includes(normalized)
+      (h) => h.result.product_name.trim().toLowerCase() === normalized
     );
     if (cachedItem) {
       setResult(cachedItem.result);
@@ -123,13 +122,10 @@ export default function ScanPage() {
       saveToHistory(data);
     } catch (err: unknown) {
       console.warn('Backend query error, checking local preset catalog:', err);
-      // Check if user queried one of our standard demo products
-      const normalized = queryText.toLowerCase();
+      // Check if user queried one of our exact demo products
       const matched = FALLBACK_PRESET_PRODUCTS.find((p) => 
-        p.title.toLowerCase().includes(normalized) || 
-        p.sample_result.product_name.toLowerCase().includes(normalized) ||
-        normalized.includes('bread') ||
-        normalized.includes('coke')
+        p.title.toLowerCase() === normalized || 
+        p.sample_result.product_name.toLowerCase() === normalized
       );
 
       if (matched) {
@@ -141,7 +137,7 @@ export default function ScanPage() {
       const errorObj = err as { response?: { data?: { detail?: string } } };
       setError(
         errorObj.response?.data?.detail ||
-          `Could not retrieve live packaging data for "${queryText}". Please ensure your backend is online or try searching with brand name and product.`
+          `No live packaging data found online for "${queryText}". Try including the brand name (e.g., "Cadbury Bournvita" or "Nestle Maggi") or upload a packaging photo directly.`
       );
     } finally {
       setLoading(false);
@@ -211,6 +207,22 @@ export default function ScanPage() {
             </span>
           )}
         </button>
+
+        {history.length > 0 && (
+          <button
+            onClick={() => {
+              if (window.confirm("Are you sure you want to reset and clear all previous scan history?")) {
+                clearHistory();
+                setResult(null);
+              }
+            }}
+            className="ml-auto pb-2 text-xs text-zinc-500 hover:text-rose-600 flex items-center gap-1.5 px-2.5 py-1 rounded border border-zinc-200 hover:border-rose-200 transition-colors"
+            title="Reset and clear all saved scans"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Reset Scans ({history.length})</span>
+          </button>
+        )}
       </div>
 
       {activeTab === 'history' ? (
