@@ -56,12 +56,24 @@ export const smartScan = async (
   }
   formData.append('user_profile', JSON.stringify(userProfile));
 
-  const res = await apiClient.post<LabelAnalysisResult>('/api/smart-scan', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
-  return res.data;
+  try {
+    const res = await apiClient.post<LabelAnalysisResult>('/api/smart-scan', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data;
+  } catch (err: unknown) {
+    const errorObj = err as { response?: { status?: number } };
+    // If backend is running an older deployed version where /api/smart-scan returns 404:
+    if (errorObj.response?.status === 404) {
+      if (input.imageFile) {
+        // Fallback directly to the classic /api/analyze-label endpoint
+        return await analyzeLabel(input.imageFile, userProfile);
+      }
+    }
+    throw err;
+  }
 };
 
 export const sendChatMessage = async (
