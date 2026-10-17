@@ -74,7 +74,9 @@ async def analyze_label(
         result = await gemini_vision_service.analyze_label_image(image_bytes, profile)
 
         # 1. Image Validation: Reject non-food images
-        if not getattr(result, "is_food_label", True) or getattr(result, "label_type", "") == "NOT_A_LABEL":
+        is_food = result.get("is_food_label", True) if isinstance(result, dict) else getattr(result, "is_food_label", True)
+        lbl_type = result.get("label_type", "") if isinstance(result, dict) else getattr(result, "label_type", "")
+        if not is_food or lbl_type == "NOT_A_LABEL":
             raise HTTPException(
                 status_code=400,
                 detail="PRODUCT_NOT_VISIBLE: No food packaging or label detected in the image. Please upload a clear photo of the product label."
