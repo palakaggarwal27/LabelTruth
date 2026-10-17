@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatCardData } from '@/types';
 import { fetchStats } from '@/lib/api';
-import { BarChart3, Globe2, Users } from 'lucide-react';
+import { Globe2, Users } from 'lucide-react';
 
 const FALLBACK_STATS: StatCardData[] = [
   {

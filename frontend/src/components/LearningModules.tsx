@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Scale, EyeOff, AlertTriangle, Globe2, ShieldAlert, HeartCrack, Sparkles } from 'lucide-react';
+import { Scale, EyeOff, AlertTriangle, Globe2, ShieldAlert, HeartCrack } from 'lucide-react';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 
 const MODULES = [

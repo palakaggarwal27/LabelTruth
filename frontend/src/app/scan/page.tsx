@@ -20,7 +20,7 @@ import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
 const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 
 export default function ScanPage() {
-  const { profile, setIsModalOpen } = useHealthProfile();
+  const { profile } = useHealthProfile();
   const [activeTab, setActiveTab] = useState<'scan' | 'history'>('scan');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -126,6 +126,7 @@ export default function ScanPage() {
             Capture live back-of-pack or upload quick-commerce screenshot (Blinkit, Zepto, Amazon).
           </p>
         </div>
+      </div>
 
       {/* Active Household Profile Switcher */}
       <div className="mb-6">

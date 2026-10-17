@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useHealthProfile } from '@/context/HealthProfileContext';
-import { Users, User, ShieldAlert, Heart, ChevronDown } from 'lucide-react';
+import { Users, User } from 'lucide-react';
 
 export const HealthProfileManager: React.FC = () => {
   const { profiles, activeProfile, switchProfile, setIsModalOpen } = useHealthProfile();

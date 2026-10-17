@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { NutrientIntegrityMatrix } from '@/types';
-import { Activity, ShieldCheck, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
+import { Activity, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
 
 interface NutrientMatrixProps {
   matrix?: NutrientIntegrityMatrix;
@@ -96,7 +96,7 @@ export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix }) => {
                       <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                     )}
                     <div>
-                      <span className="font-semibold text-zinc-900">"{c.claim}"</span>
+                      <span className="font-semibold text-zinc-900">&quot;{c.claim}&quot;</span>
                       <p className="text-[11px] text-zinc-600 font-light mt-0.5">{c.explanation}</p>
                     </div>
                   </div>
