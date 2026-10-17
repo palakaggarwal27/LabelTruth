@@ -27,7 +27,8 @@ AUDIT CRITERIA:
    - Whole Wheat (Atta) vs Maida: Flag products marketed as Brown Bread or Atta Biscuits that use INS 150d (Caramel Colour) to dye white flour brown or have maida as the primary grain.
    - Flag harmful INS codes: INS 150d (Caramel Colour IV, 4-MEI carcinogen risk), INS 621 (MSG), INS 627/631 (flavour enhancers), INS 211 (Sodium Benzoate), INS 102 (Tartrazine), INS 320 (BHA), Maltodextrin (GI 105-110).
 
-3. Nutrient Integrity & Bioavailability Audit:
+3. Nutrient Card Breakdown & Nutrient Integrity Audit:
+   - Detailed Nutritional Panel: Parse each nutrient on the nutrition table (Calories, Total Fat, Saturated Fat, Trans Fat, Total Carbohydrates, Added Sugar, Sodium, etc.) with exact per 100g amounts, % Daily Value (% RDA), and a sharp forensic clinical evaluation.
    - Protein Reality & PDCAAS: Calculate declared protein, estimate usable bioavailable protein using PDCAAS score (e.g. Soy=0.91, Whey=1.0, Wheat/Gluten=0.25-0.4), identify protein sources, protein-to-calorie percentage, and amino spiking risk (added free Glycine/Taurine).
    - Fiber Quality: Classify fiber as Whole Grain vs. synthetic isolate (polydextrose, chicory root inulin).
    - Fat Audit: Expose Palm Oil or trans fats hidden behind "0% Cholesterol" or "Light" claims.
@@ -61,6 +62,24 @@ Return ONLY valid JSON matching this schema:
       "personalized_warning": "string"
     }
   ],
+  "nutrition_card": {
+    "serving_size": "100g",
+    "calories_kcal": 0.0,
+    "total_fat_g": 0.0,
+    "saturated_fat_g": 0.0,
+    "trans_fat_g": 0.0,
+    "total_carbs_g": 0.0,
+    "added_sugars_g": 0.0,
+    "sodium_mg": 0.0,
+    "breakdown": [
+      {
+        "nutrient": "string",
+        "amount_per_100g": "string",
+        "daily_value_percent": "string",
+        "clinical_evaluation": "string"
+      }
+    ]
+  },
   "nutrient_integrity": {
     "protein": {
       "declared_protein_g": 0.0,

@@ -40,6 +40,8 @@ interface HealthProfileContextType {
   switchProfile: (profileId: string) => void;
   updateActiveProfile: (newProfile: UserProfile) => void;
   updateProfile: (newProfile: UserProfile) => void; // backward compatibility
+  addProfile: (newProfile: UserProfile) => void;
+  removeProfile: (profileId: string) => void;
   isModalOpen: boolean;
   setIsModalOpen: (open: boolean) => void;
 }
@@ -80,12 +82,49 @@ export const HealthProfileProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const updateActiveProfile = (updated: UserProfile) => {
-    const newProfiles = profiles.map((p) => (p.id === activeProfile.id ? { ...updated, id: p.id, name: p.name } : p));
+    const newProfiles = profiles.map((p) => 
+      p.id === activeProfile.id 
+        ? { ...updated, id: p.id, name: updated.name || p.name } 
+        : p
+    );
     setProfiles(newProfiles);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfiles));
     } catch (e) {
       console.warn('Could not save health profiles to localStorage', e);
+    }
+  };
+
+  const addProfile = (newProfile: UserProfile) => {
+    const id = newProfile.id || `profile_${Date.now()}`;
+    const profileWithId = { ...newProfile, id };
+    const newProfiles = [...profiles, profileWithId];
+    setProfiles(newProfiles);
+    setActiveProfileId(id);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfiles));
+      localStorage.setItem(ACTIVE_PROFILE_KEY, id);
+    } catch (e) {
+      console.warn('Could not add profile to localStorage', e);
+    }
+  };
+
+  const removeProfile = (profileId: string) => {
+    if (profiles.length <= 1) return; // Keep at least one profile
+    const newProfiles = profiles.filter((p) => p.id !== profileId);
+    setProfiles(newProfiles);
+    if (activeProfileId === profileId) {
+      setActiveProfileId(newProfiles[0].id!);
+      try {
+        localStorage.setItem(ACTIVE_PROFILE_KEY, newProfiles[0].id!);
+      } catch (e) {
+        console.warn('Could not save active profile ID', e);
+      }
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProfiles));
+    } catch (e) {
+      console.warn('Could not save profiles after removal', e);
     }
   };
 
@@ -98,6 +137,8 @@ export const HealthProfileProvider: React.FC<{ children: React.ReactNode }> = ({
         switchProfile,
         updateActiveProfile,
         updateProfile: updateActiveProfile,
+        addProfile,
+        removeProfile,
         isModalOpen,
         setIsModalOpen,
       }}

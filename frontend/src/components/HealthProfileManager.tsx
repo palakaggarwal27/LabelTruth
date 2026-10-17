@@ -7,10 +7,28 @@ import { Users, User } from 'lucide-react';
 export const HealthProfileManager: React.FC = () => {
   const { profiles, activeProfile, switchProfile, setIsModalOpen } = useHealthProfile();
 
+  // Helper to dynamically extract the short summary tags for any profile
+  const getProfileSummary = (p: typeof activeProfile) => {
+    const tags: string[] = [];
+    if (p.medical_conditions && p.medical_conditions.length > 0) {
+      tags.push(...p.medical_conditions);
+    }
+    if (p.allergies && p.allergies.length > 0) {
+      tags.push(...p.allergies);
+    }
+    if (p.dietary_preferences && p.dietary_preferences.length > 0) {
+      tags.push(...p.dietary_preferences);
+    }
+    if (tags.length === 0 && p.custom_avoid_list && p.custom_avoid_list.length > 0) {
+      tags.push(`Avoid: ${p.custom_avoid_list.slice(0, 2).join(', ')}`);
+    }
+    return tags.length > 0 ? tags.slice(0, 3).join(' • ') : 'General Wellness';
+  };
+
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-50 border border-zinc-200 rounded-md">
-      <div className="flex items-center gap-2">
-        <Users className="w-4 h-4 text-zinc-700" />
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-zinc-50 border border-zinc-200 rounded-md">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Users className="w-4 h-4 text-zinc-700 shrink-0" />
         <span className="text-xs font-semibold text-zinc-900">Evaluating For:</span>
         <div className="flex items-center gap-1.5 flex-wrap">
           {profiles.map((p) => {
@@ -26,24 +44,22 @@ export const HealthProfileManager: React.FC = () => {
                 }`}
               >
                 <User className="w-3 h-3" />
-                <span>{p.name}</span>
+                <span>{p.name || 'Member'}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 self-end sm:self-auto">
-        <span className="text-[11px] text-zinc-500 font-mono hidden md:inline">
-          {activeProfile.medical_conditions.length > 0
-            ? activeProfile.medical_conditions.join(', ')
-            : 'General Health Focus'}
+      <div className="flex items-center gap-3 self-end sm:self-auto">
+        <span className="text-[11px] text-zinc-600 font-mono bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
+          {getProfileSummary(activeProfile)}
         </span>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="text-xs text-zinc-800 hover:text-black font-semibold underline"
+          className="text-xs text-zinc-900 hover:text-black font-semibold underline flex items-center gap-1"
         >
-          Customize
+          <span>Manage Profiles</span>
         </button>
       </div>
     </div>

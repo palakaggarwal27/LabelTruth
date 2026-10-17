@@ -1,18 +1,17 @@
-"use client";
-
 import React from 'react';
-import { NutrientIntegrityMatrix } from '@/types';
-import { Activity, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
+import { NutrientIntegrityMatrix, NutritionCardAnalysis } from '@/types';
+import { Activity, AlertTriangle, XCircle, CheckCircle2, TableProperties, ShieldAlert } from 'lucide-react';
 
 interface NutrientMatrixProps {
   matrix?: NutrientIntegrityMatrix;
+  nutritionCard?: NutritionCardAnalysis;
 }
 
-export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix }) => {
-  if (!matrix) return null;
+export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix, nutritionCard }) => {
+  if (!matrix && !nutritionCard) return null;
 
-  const protein = matrix.protein;
-  const claims = matrix.claims_matrix || [];
+  const protein = matrix?.protein;
+  const claims = matrix?.claims_matrix || [];
 
   return (
     <div className="bg-white border border-zinc-200 rounded-md p-6 space-y-6">
@@ -27,6 +26,80 @@ export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix }) => {
           Calculates actual usable bioavailable protein (PDCAAS), fiber authenticity, and uncovers hidden sugars & fats.
         </p>
       </div>
+
+      {/* Detailed Nutrition Card Table Breakdown */}
+      {nutritionCard && (
+        <div className="p-4 bg-zinc-50 rounded-md border border-zinc-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
+              <TableProperties className="w-4 h-4 text-zinc-700" />
+              <span>Decoded Nutrition Facts Panel</span>
+            </div>
+            <span className="text-[11px] font-mono text-zinc-500">
+              Serving: {nutritionCard.serving_size || '100g'}
+            </span>
+          </div>
+
+          {/* Quick macro highlights */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div className="p-2.5 bg-white border border-zinc-200 rounded">
+              <span className="text-[10px] text-zinc-400 font-mono block">Energy</span>
+              <span className="font-bold text-zinc-900">{nutritionCard.calories_kcal || 0} kcal</span>
+            </div>
+            <div className="p-2.5 bg-white border border-zinc-200 rounded">
+              <span className="text-[10px] text-zinc-400 font-mono block">Total Fat</span>
+              <span className="font-bold text-zinc-900">{nutritionCard.total_fat_g || 0}g</span>
+            </div>
+            <div className="p-2.5 bg-white border border-zinc-200 rounded">
+              <span className="text-[10px] text-zinc-400 font-mono block">Added Sugar</span>
+              <span className={`font-bold ${nutritionCard.added_sugars_g > 10 ? 'text-rose-700' : 'text-zinc-900'}`}>
+                {nutritionCard.added_sugars_g || 0}g
+              </span>
+            </div>
+            <div className="p-2.5 bg-white border border-zinc-200 rounded">
+              <span className="text-[10px] text-zinc-400 font-mono block">Sodium</span>
+              <span className={`font-bold ${nutritionCard.sodium_mg > 400 ? 'text-amber-700' : 'text-zinc-900'}`}>
+                {nutritionCard.sodium_mg || 0}mg
+              </span>
+            </div>
+          </div>
+
+          {/* Line by line breakdown table */}
+          {nutritionCard.breakdown && nutritionCard.breakdown.length > 0 && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-left text-xs border border-zinc-200 bg-white rounded">
+                <thead>
+                  <tr className="bg-zinc-100/70 border-b border-zinc-200 text-[10px] uppercase font-mono text-zinc-600">
+                    <th className="py-2 px-3">Nutrient</th>
+                    <th className="py-2 px-3">Amount (100g)</th>
+                    <th className="py-2 px-3">% RDA / DV</th>
+                    <th className="py-2 px-3">Clinical Evaluation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {nutritionCard.breakdown.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50/60">
+                      <td className="py-2 px-3 font-medium text-zinc-900">{row.nutrient}</td>
+                      <td className="py-2 px-3 font-mono text-zinc-700">{row.amount_per_100g}</td>
+                      <td className="py-2 px-3 font-mono text-zinc-500">{row.daily_value_percent || '—'}</td>
+                      <td className="py-2 px-3 text-[11px] text-zinc-600 font-light flex items-center gap-1.5">
+                        {row.clinical_evaluation ? (
+                          <>
+                            <ShieldAlert className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>{row.clinical_evaluation}</span>
+                          </>
+                        ) : (
+                          <span>Within normal standard range</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Protein reality */}
       {protein && (
@@ -54,26 +127,28 @@ export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix }) => {
       )}
 
       {/* Fiber, Palm Oil, and Hidden Sugar Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-        <div className="p-3 border border-zinc-200 rounded-md bg-white">
-          <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Fiber Quality</span>
-          <span className="font-semibold text-zinc-900">{matrix.fiber_type || 'Whole Grain'}</span>
+      {matrix && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 border border-zinc-200 rounded-md bg-white">
+            <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Fiber Quality</span>
+            <span className="font-semibold text-zinc-900">{matrix.fiber_type || 'Whole Grain'}</span>
+          </div>
+          <div className="p-3 border border-zinc-200 rounded-md bg-white">
+            <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Palm Oil Detection</span>
+            <span className={`font-semibold ${matrix.palm_oil_present ? 'text-rose-700' : 'text-emerald-700'}`}>
+              {matrix.palm_oil_present ? 'Present (Palmitic Acid Risk)' : 'None Detected'}
+            </span>
+          </div>
+          <div className="p-3 border border-zinc-200 rounded-md bg-white">
+            <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Hidden Sugars</span>
+            <span className="font-medium text-zinc-800">
+              {matrix.hidden_sugars_flagged && matrix.hidden_sugars_flagged.length > 0
+                ? matrix.hidden_sugars_flagged.join(', ')
+                : 'No Disguised Sugars'}
+            </span>
+          </div>
         </div>
-        <div className="p-3 border border-zinc-200 rounded-md bg-white">
-          <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Palm Oil Detection</span>
-          <span className={`font-semibold ${matrix.palm_oil_present ? 'text-rose-700' : 'text-emerald-700'}`}>
-            {matrix.palm_oil_present ? 'Present (Palmitic Acid Risk)' : 'None Detected'}
-          </span>
-        </div>
-        <div className="p-3 border border-zinc-200 rounded-md bg-white">
-          <span className="text-[10px] uppercase font-mono text-zinc-400 block mb-1">Hidden Sugars</span>
-          <span className="font-medium text-zinc-800">
-            {matrix.hidden_sugars_flagged && matrix.hidden_sugars_flagged.length > 0
-              ? matrix.hidden_sugars_flagged.join(', ')
-              : 'No Disguised Sugars'}
-          </span>
-        </div>
-      </div>
+      )}
 
       {/* Claim Verification Matrix */}
       {claims.length > 0 && (

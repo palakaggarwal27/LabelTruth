@@ -35,6 +35,23 @@ class NutrientIntegrityMatrix(BaseModel):
     sodium_and_preservatives_risk: str = Field(default='Low', description='Risk assessment for MSG/INS 627/631/INS 211')
     claims_matrix: List[ClaimVerification] = Field(default_factory=list, description='Verification of all front-of-pack claims')
 
+class NutritionFactItem(BaseModel):
+    nutrient: str = Field(description='Nutrient name e.g. Calories, Total Fat, Saturated Fat, Added Sugar, Sodium, Carbohydrates')
+    amount_per_100g: str = Field(default='', description='Amount per 100g or per serving e.g. 450 kcal, 15g, 820mg')
+    daily_value_percent: Optional[str] = Field(default=None, description='% Daily Value (% RDA) if present or estimated')
+    clinical_evaluation: str = Field(default='', description='Forensic clinical analysis of this nutrient amount e.g. Exceeds WHO recommended daily free sugar limit in single serving')
+
+class NutritionCardAnalysis(BaseModel):
+    serving_size: str = Field(default='100g', description='Stated serving size')
+    calories_kcal: float = Field(default=0.0, description='Energy in kcal per 100g')
+    total_fat_g: float = Field(default=0.0, description='Total fat in grams')
+    saturated_fat_g: float = Field(default=0.0, description='Saturated fat in grams')
+    trans_fat_g: float = Field(default=0.0, description='Trans fat in grams')
+    total_carbs_g: float = Field(default=0.0, description='Total carbohydrates in grams')
+    added_sugars_g: float = Field(default=0.0, description='Added sugars in grams')
+    sodium_mg: float = Field(default=0.0, description='Sodium in milligrams')
+    breakdown: List[NutritionFactItem] = Field(default_factory=list, description='Detailed clinical breakdown of every line on the nutrition table')
+
 class LabelAnalysisResult(BaseModel):
     product_name: str = Field(description='Identified brand and product title')
     health_score: int = Field(ge=0, le=100, description='Overall health score from 0 (ultra-processed/toxic) to 100 (wholesome/clean)')
@@ -43,6 +60,7 @@ class LabelAnalysisResult(BaseModel):
     deceptive_claims_flagged: List[str] = Field(default_factory=list, description='Front-of-pack claims that deceive or contradict back-of-pack realities')
     fssai_violations: List[str] = Field(default_factory=list, description='Violations or bypasses of FSSAI regulations e.g. descending weight rule, frozen dessert sold as ice cream, misleading Atta claims')
     ingredient_breakdown: List[IngredientItem] = Field(default_factory=list, description='Itemized breakdown of ingredients')
+    nutrition_card: Optional[NutritionCardAnalysis] = Field(default=None, description='Detailed breakdown and clinical analysis of the nutritional table facts')
     healthier_alternative: HealthierAlternative = Field(description='Clean swap recommendation')
     clean_alternatives: List[HealthierAlternative] = Field(default_factory=list, description='2-3 clean whole-food Indian alternative products available on quick-commerce')
     nutrient_integrity: NutrientIntegrityMatrix = Field(default_factory=NutrientIntegrityMatrix, description='Protein bioavailability and full nutrient integrity matrix')

@@ -82,15 +82,32 @@ async def analyze_label(
                 detail="PRODUCT_NOT_VISIBLE: No food packaging or label detected in the image. Please upload a clear photo of the product label."
             )
 
-        # 2. Partial Photo Logic (Scenario A: Only Front-of-Pack): Enrich with TinyFish
-        if getattr(result, "label_type", "") == "FRONT_OF_PACK" and result.product_name:
+        # 2. Comprehensive Partial Photo Logic:
+        # If user provides only Front-of-Pack (fetch both ingredients & nutrition)
+        # If user provides only Ingredients (fetch nutrition table)
+        # If user provides only Nutrition card (fetch ingredients)
+        has_ingredients = bool(getattr(result, "ingredient_breakdown", []))
+        has_nutrition = bool(getattr(result, "nutrition_card", None) and getattr(result.nutrition_card, "breakdown", []))
+        lbl_type_str = str(getattr(result, "label_type", ""))
+
+        needs_enrichment = (
+            lbl_type_str == "FRONT_OF_PACK" or
+            (not has_ingredients and has_nutrition) or
+            (has_ingredients and not has_nutrition)
+        )
+
+        if needs_enrichment and result.product_name:
             try:
                 from app.services.tinyfish_service import tinyfish_service
-                bop_text = await tinyfish_service.search_and_fetch_bop(result.product_name)
-                if bop_text:
-                    result = await gemini_vision_service.analyze_label_image(image_bytes, profile, bop_supplement_text=bop_text)
+                supplement_text = await tinyfish_service.search_and_fetch_bop(result.product_name)
+                if supplement_text:
+                    result = await gemini_vision_service.analyze_label_image(
+                        image_bytes, 
+                        profile, 
+                        bop_supplement_text=supplement_text
+                    )
             except Exception as tf_err:
-                logger.warning(f"TinyFish BOP enrichment fallback failed: {tf_err}")
+                logger.warning(f"TinyFish partial photo enrichment fallback: {tf_err}")
 
         return result
     except HTTPException:

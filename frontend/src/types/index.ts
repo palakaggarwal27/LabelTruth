@@ -40,6 +40,25 @@ export interface NutrientIntegrityMatrix {
   claims_matrix?: ClaimVerification[];
 }
 
+export interface NutritionFactItem {
+  nutrient: string;
+  amount_per_100g: string;
+  daily_value_percent?: string;
+  clinical_evaluation: string;
+}
+
+export interface NutritionCardAnalysis {
+  serving_size: string;
+  calories_kcal: number;
+  total_fat_g: number;
+  saturated_fat_g: number;
+  trans_fat_g: number;
+  total_carbs_g: number;
+  added_sugars_g: number;
+  sodium_mg: number;
+  breakdown: NutritionFactItem[];
+}
+
 export interface LabelAnalysisResult {
   product_name: string;
   health_score: number;
@@ -48,6 +67,7 @@ export interface LabelAnalysisResult {
   deceptive_claims_flagged: string[];
   fssai_violations: string[];
   ingredient_breakdown: IngredientItem[];
+  nutrition_card?: NutritionCardAnalysis;
   healthier_alternative: HealthierAlternative;
   clean_alternatives?: HealthierAlternative[];
   nutrient_integrity?: NutrientIntegrityMatrix;

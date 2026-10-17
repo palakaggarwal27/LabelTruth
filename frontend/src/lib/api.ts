@@ -42,6 +42,28 @@ export const analyzeLabel = async (
   return res.data;
 };
 
+export const smartScan = async (
+  input: { query?: string; imageFile?: Blob | File },
+  userProfile: UserProfile
+): Promise<LabelAnalysisResult> => {
+  const formData = new FormData();
+  if (input.imageFile) {
+    formData.append('image', input.imageFile, 'label_capture.jpg');
+    formData.append('file', input.imageFile, 'label_capture.jpg');
+  }
+  if (input.query) {
+    formData.append('query', input.query);
+  }
+  formData.append('user_profile', JSON.stringify(userProfile));
+
+  const res = await apiClient.post<LabelAnalysisResult>('/api/smart-scan', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
+};
+
 export const sendChatMessage = async (
   message: string,
   history: { role: string; content: string }[],

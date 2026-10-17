@@ -53,28 +53,36 @@ const COMMON_AVOID = [
 ];
 
 export const HealthProfileModal: React.FC = () => {
-  const { profile, updateProfile, isModalOpen, setIsModalOpen } = useHealthProfile();
+  const { profiles, activeProfile, switchProfile, updateActiveProfile, addProfile, removeProfile, isModalOpen, setIsModalOpen } = useHealthProfile();
 
-  const [dietary, setDietary] = useState<string[]>(profile.dietary_preferences);
-  const [medical, setMedical] = useState<string[]>(profile.medical_conditions);
-  const [allergies, setAllergies] = useState<string[]>(profile.allergies);
-  const [avoid, setAvoid] = useState<string[]>(profile.custom_avoid_list);
+  const [profileName, setProfileName] = useState(activeProfile.name || 'Member');
+  const [dietary, setDietary] = useState<string[]>(activeProfile.dietary_preferences);
+  const [medical, setMedical] = useState<string[]>(activeProfile.medical_conditions);
+  const [allergies, setAllergies] = useState<string[]>(activeProfile.allergies);
+  const [avoid, setAvoid] = useState<string[]>(activeProfile.custom_avoid_list);
   const [customInput, setCustomInput] = useState('');
   const [validating, setValidating] = useState(false);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
   const [validationSuccess, setValidationSuccess] = useState<string | null>(null);
 
+  // New family member creation state
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+
   // Sync state whenever modal opens or profile changes
   React.useEffect(() => {
     if (isModalOpen) {
-      setDietary(profile.dietary_preferences);
-      setMedical(profile.medical_conditions);
-      setAllergies(profile.allergies);
-      setAvoid(profile.custom_avoid_list);
+      setProfileName(activeProfile.name || 'Member');
+      setDietary(activeProfile.dietary_preferences);
+      setMedical(activeProfile.medical_conditions);
+      setAllergies(activeProfile.allergies);
+      setAvoid(activeProfile.custom_avoid_list);
       setValidationWarning(null);
       setValidationSuccess(null);
+      setIsAddingNew(false);
+      setNewMemberName('');
     }
-  }, [isModalOpen, profile]);
+  }, [isModalOpen, activeProfile]);
 
   if (!isModalOpen) return null;
 
@@ -89,7 +97,8 @@ export const HealthProfileModal: React.FC = () => {
   const removeAvoidItem = (itemToRemove: string) => {
     const updatedAvoid = avoid.filter((x) => x !== itemToRemove);
     setAvoid(updatedAvoid);
-    updateProfile({
+    updateActiveProfile({
+      name: profileName,
       dietary_preferences: dietary,
       medical_conditions: medical,
       allergies: allergies,
@@ -99,13 +108,29 @@ export const HealthProfileModal: React.FC = () => {
 
   const handleSave = () => {
     const updated: UserProfile = {
+      name: profileName.trim() || activeProfile.name || 'Member',
       dietary_preferences: dietary,
       medical_conditions: medical,
       allergies: allergies,
       custom_avoid_list: avoid,
     };
-    updateProfile(updated);
+    updateActiveProfile(updated);
     setIsModalOpen(false);
+  };
+
+  const handleCreateNewProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newMemberName.trim();
+    if (!trimmed) return;
+    addProfile({
+      name: trimmed,
+      dietary_preferences: [],
+      medical_conditions: [],
+      allergies: [],
+      custom_avoid_list: [],
+    });
+    setNewMemberName('');
+    setIsAddingNew(false);
   };
 
   const handleAddCustom = async (e: React.FormEvent) => {
@@ -127,7 +152,8 @@ export const HealthProfileModal: React.FC = () => {
           setAvoid(newAvoid);
         }
         // Auto-persist immediately to profile storage
-        updateProfile({
+        updateActiveProfile({
+          name: profileName,
           dietary_preferences: dietary,
           medical_conditions: medical,
           allergies: allergies,
@@ -148,7 +174,8 @@ export const HealthProfileModal: React.FC = () => {
         newAvoid = [...avoid, fallbackName];
         setAvoid(newAvoid);
       }
-      updateProfile({
+      updateActiveProfile({
+        name: profileName,
         dietary_preferences: dietary,
         medical_conditions: medical,
         allergies: allergies,
@@ -184,6 +211,91 @@ export const HealthProfileModal: React.FC = () => {
 
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-6 text-sm">
+          {/* Family Member Tabs & Add New */}
+          <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-md">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-700">
+                Household Members
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAddingNew(!isAddingNew)}
+                className="text-xs text-zinc-900 font-semibold hover:underline"
+              >
+                {isAddingNew ? 'Cancel' : '+ Add Family Member'}
+              </button>
+            </div>
+
+            {isAddingNew ? (
+              <form onSubmit={handleCreateNewProfile} className="flex gap-2 my-2">
+                <input
+                  type="text"
+                  placeholder="e.g. Mom, Grandma, Brother, Toddler"
+                  value={newMemberName}
+                  onChange={(e) => setNewMemberName(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-xs border border-zinc-300 rounded focus:outline-none focus:border-zinc-900"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!newMemberName.trim()}
+                  className="px-3 py-1.5 bg-zinc-900 text-white rounded text-xs font-semibold hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  Create
+                </button>
+              </form>
+            ) : null}
+
+            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+              {profiles.map((p) => {
+                const isSelected = p.id === activeProfile.id;
+                return (
+                  <div key={p.id} className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => switchProfile(p.id!)}
+                      className={`px-2.5 py-1 text-xs rounded-l font-medium border transition-colors ${
+                        isSelected
+                          ? 'bg-zinc-900 text-white border-zinc-900'
+                          : 'bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300'
+                      } ${profiles.length <= 1 ? 'rounded-r' : ''}`}
+                    >
+                      {p.name || 'Member'}
+                    </button>
+                    {profiles.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeProfile(p.id!)}
+                        title={`Delete ${p.name}`}
+                        className={`px-1.5 py-1 text-xs rounded-r border-t border-b border-r transition-colors ${
+                          isSelected
+                            ? 'bg-zinc-800 text-zinc-300 border-zinc-900 hover:text-white'
+                            : 'bg-white text-zinc-400 border-zinc-200 hover:text-rose-600'
+                        }`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Member Name Editor */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-zinc-600 block mb-1.5">
+              Profile Display Name
+            </label>
+            <input
+              type="text"
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs border border-zinc-200 rounded-md focus:outline-none focus:border-zinc-900"
+              placeholder="e.g. Dad, Mom, Self, Kid"
+            />
+          </div>
+
           {/* Medical Conditions */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-zinc-600 block mb-2">

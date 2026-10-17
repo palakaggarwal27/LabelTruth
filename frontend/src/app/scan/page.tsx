@@ -10,7 +10,7 @@ import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
 import { AlternativeCard } from '@/components/Results/AlternativeCard';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
-import { analyzeLabel } from '@/lib/api';
+import { smartScan } from '@/lib/api';
 import { LabelAnalysisResult, PresetProduct, ScannedHistoryItem } from '@/types';
 import { AlertCircle, RefreshCw, ScanLine, History } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
@@ -84,7 +84,7 @@ export default function ScanPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await analyzeLabel(fileOrBlob, profile);
+      const data = await smartScan({ imageFile: fileOrBlob }, profile);
       setResult(data);
       saveToHistory(data, fileOrBlob);
     } catch (err: unknown) {
@@ -97,6 +97,25 @@ export default function ScanPage() {
     } finally {
       setLoading(false);
       setIsCameraOpen(false);
+    }
+  };
+
+  const handleProcessQuery = async (queryText: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await smartScan({ query: queryText }, profile);
+      setResult(data);
+      saveToHistory(data);
+    } catch (err: unknown) {
+      const errorObj = err as { response?: { data?: { detail?: string } } };
+      console.error('Search query analysis failed:', err);
+      setError(
+        errorObj.response?.data?.detail ||
+          'Failed to locate or audit product. Try uploading an image directly.'
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -182,6 +201,7 @@ export default function ScanPage() {
             <UploadZone
               onFileSelect={handleProcessImage}
               onOpenLiveCamera={() => setIsCameraOpen(true)}
+              onTextSubmit={handleProcessQuery}
               loading={loading}
             />
           )}
@@ -234,7 +254,10 @@ export default function ScanPage() {
 
           <IngredientAccordion ingredients={result.ingredient_breakdown} />
 
-          <NutrientMatrix matrix={result.nutrient_integrity} />
+          <NutrientMatrix 
+            matrix={result.nutrient_integrity} 
+            nutritionCard={result.nutrition_card}
+          />
 
           <AlternativeCard 
             alternative={result.healthier_alternative} 
