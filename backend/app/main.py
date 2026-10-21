@@ -362,6 +362,8 @@ async def audit_cart_endpoint(
             user_profile=profile
         )
         return response
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Cart audit error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to audit cart: {str(e)}")

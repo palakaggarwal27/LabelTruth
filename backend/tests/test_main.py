@@ -391,11 +391,11 @@ def test_profile_evaluator_acidity_deduction():
     assert eval_res["adjusted_health_score"] < mock_product.health_score
 
 def test_audit_cart_endpoint():
-    """Verify /api/audit-cart endpoint returns valid CartAuditResponse with metrics"""
+    """Verify /api/audit-cart endpoint returns valid CartAuditResponse with distinct, non-identical swaps"""
     response = client.post(
         "/api/audit-cart",
         data={
-            "cart_url": "https://www.zepto.com/cart/share-12345",
+            "cart_url": "https://www.zepto.com/cart?items=Haldirams-Bhujia-Sev",
             "pincode": "110001",
             "user_profile": json.dumps({"medical_conditions": ["Acidity"]})
         }
@@ -406,3 +406,9 @@ def test_audit_cart_endpoint():
     assert "swapped_cart_score" in data
     assert "items" in data
     assert len(data["items"]) > 0
+    first_item = data["items"][0]
+    # Verify that the clean swap is NOT the same product as the original
+    assert first_item["cleaner_alternative"] is not None
+    assert first_item["cleaner_alternative"]["name"] != first_item["product_name"]
+    assert "bhujia" not in first_item["cleaner_alternative"]["name"].lower()
+    assert first_item["cleaner_alternative"]["health_score"] > first_item["health_score"]
