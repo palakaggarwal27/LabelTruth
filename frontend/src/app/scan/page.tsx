@@ -174,11 +174,15 @@ export default function ScanPage() {
       saveToHistory(data);
     } catch (err: unknown) {
       console.warn('Backend query error, checking local preset catalog:', err);
-      // Check if user queried one of our exact demo products
-      const matched = FALLBACK_PRESET_PRODUCTS.find((p) => 
-        p.title.toLowerCase() === normalized || 
-        p.sample_result.product_name.toLowerCase() === normalized
-      );
+      // Check if user queried one of our exact demo products or related keywords
+      const matched = FALLBACK_PRESET_PRODUCTS.find((p) => {
+        const pTitle = p.title.toLowerCase();
+        const pSub = p.subtitle.toLowerCase();
+        const pProd = p.sample_result.product_name.toLowerCase();
+        return pTitle.includes(normalized) ||
+               pProd.includes(normalized) ||
+               normalized.split(" ").some((w) => w.length > 3 && (pTitle.includes(w) || pProd.includes(w) || pSub.includes(w)));
+      });
 
       if (matched) {
         setResult(matched.sample_result);

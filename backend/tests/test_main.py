@@ -30,8 +30,9 @@ def test_get_demo_presets():
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert len(data) >= 3
-    assert data[0]["id"] == "brown-bread"
+    assert len(data) == 5
+    assert data[0]["id"] == "chips-18"
+    assert data[1]["id"] == "bread-38"
 
 @patch("app.services.condition_service.condition_validation_service.validate")
 def test_validate_condition(mock_validate):

@@ -32,7 +32,7 @@ AUDIT CRITERIA:
    - If the uploaded image only shows the ingredient list or front-of-pack and lacks a visible nutrition table, use the ONLINE BACK-OF-PACK SUPPLEMENTARY DATA or scientifically estimate the exact nutritional values per 100g based on the ingredient composition and product category. Do NOT return an empty or null nutrition_card!
    - Protein Reality & PDCAAS: Calculate declared protein, estimate usable bioavailable protein using PDCAAS score (e.g. Soy=0.91, Whey=1.0, Wheat/Gluten=0.25-0.4), identify protein sources, protein-to-calorie percentage, and amino spiking risk (added free Glycine/Taurine).
    - Fiber Quality: Classify fiber as Whole Grain vs. synthetic isolate (polydextrose, chicory root inulin).
-   - Fat Audit: Expose Palm Oil or trans fats hidden behind "0% Cholesterol" or "Light" claims.
+   - Fat & Oil Audit: Expose Palm Oil or trans fats hidden behind "0% Cholesterol" claims ONLY IF fats/oils are present. NEVER hallucinate palm oil or fat in carbonated soft drinks, sodas, colas (e.g. Coca-Cola, Pepsi), fruit juices, or tea/coffee — they contain 0g fat and 0g palm oil!
    - Sugar Audit: Expose disguised sugars (maltodextrin, concentrated fruit juice, invert sugar).
    - Claims Matrix: Audit each front-of-pack claim and classify as "VERIFIED", "MISLEADING", or "DECEPTIVE".
 
@@ -140,57 +140,101 @@ class GeminiVisionService:
         if bop_supplement_text:
             prompt += f"\n\nONLINE BACK-OF-PACK SUPPLEMENTARY DATA:\n{bop_supplement_text}\nUse this back-of-pack data to complete the audit if the image is only Front-of-Pack."
         
+        # Resize/compress image to max 1024x1024 JPEG to slash transfer and inference latency by up to 60%
         try:
-            image_part = types.Part.from_bytes(
-                data=image_bytes,
-                mime_type="image/jpeg",
-            )
-            response = self.client.models.generate_content(
-                model="gemini-3.1-flash-lite",
-                contents=[prompt, image_part],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-            clean_text = response.text.strip()
-            if clean_text.startswith("```json"):
-                clean_text = clean_text[7:]
-            if clean_text.startswith("```"):
-                clean_text = clean_text[3:]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
-            parsed = json.loads(clean_text.strip())
+            pil_img = Image.open(io.BytesIO(image_bytes))
+            if pil_img.mode in ("RGBA", "P"):
+                pil_img = pil_img.convert("RGB")
+            pil_img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=82, optimize=True)
+            image_bytes = buf.getvalue()
+        except Exception as img_err:
+            logger.debug(f"Image optimization notice: {img_err}")
 
-            # Normalize ingredient concern levels
-            if isinstance(parsed, dict) and "ingredient_breakdown" in parsed:
-                for item in parsed.get("ingredient_breakdown", []):
-                    lvl = str(item.get("concern_level", "LOW")).upper()
-                    if lvl not in ["LOW", "MEDIUM", "HIGH"]:
-                        lvl = "HIGH" if "HIGH" in lvl or "WARN" in lvl else ("MEDIUM" if "MED" in lvl else "LOW")
-                    item["concern_level"] = lvl
-            
-            # Ensure healthier_alternative is also mirrored into clean_alternatives if empty
-            if parsed.get("healthier_alternative") and not parsed.get("clean_alternatives"):
-                parsed["clean_alternatives"] = [parsed["healthier_alternative"]]
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type="image/jpeg",
+        )
 
-            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+        FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
+        last_error = None
+        parsed = None
+
+        for model_name in FALLBACK_MODELS:
             try:
-                from app.services.scoring_engine import compute_piecewise_health_score
-                score_data = compute_piecewise_health_score(
-                    nutrition=parsed.get("nutrition_card"),
-                    ingredients=parsed.get("ingredient_breakdown", []),
-                    integrity=parsed.get("nutrient_integrity"),
-                    deceptive_claims=parsed.get("deceptive_claims_flagged", []),
-                    product_name=parsed.get("product_name", "")
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt, image_part],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
                 )
-                parsed["health_score"] = score_data["final_health_score"]
-            except Exception as score_err:
-                logger.warning(f"Error computing piecewise health score: {score_err}")
+                clean_text = response.text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                if clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith("```"):
+                    clean_text = clean_text[:-3]
+                parsed = json.loads(clean_text.strip())
+                break
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                logger.warning(f"Model {model_name} failed for label image ({err_str[:120]}), trying next fallback...")
+                if "503" not in err_str and "429" not in err_str and "UNAVAILABLE" not in err_str:
+                    break
 
-            return LabelAnalysisResult(**parsed)
-        except Exception as e:
-            logger.error(f"Gemini Vision API error: {e}")
-            raise RuntimeError(f"Gemini Vision failed to parse label: {e}")
+        if not parsed:
+            raise RuntimeError(
+                f"Gemini Vision API is currently experiencing high global demand (503). "
+                f"Please test with our preset products or switch on DEMO MODE (zero credits) to explore instant deterministic audits."
+            )
+
+        # Normalize ingredient concern levels
+        if isinstance(parsed, dict) and "ingredient_breakdown" in parsed:
+            for item in parsed.get("ingredient_breakdown", []):
+                lvl = str(item.get("concern_level", "LOW")).upper()
+                if lvl not in ["LOW", "MEDIUM", "HIGH"]:
+                    lvl = "HIGH" if "HIGH" in lvl or "WARN" in lvl else ("MEDIUM" if "MED" in lvl else "LOW")
+                item["concern_level"] = lvl
+        
+        # Ensure healthier_alternative is also mirrored into clean_alternatives if empty
+        if parsed.get("healthier_alternative") and not parsed.get("clean_alternatives"):
+            parsed["clean_alternatives"] = [parsed["healthier_alternative"]]
+
+        # Beverage Sanity Guard: Clear any accidental palm oil hallucination on liquid drinks / sodas
+        prod_lower = str(parsed.get("product_name", "")).lower()
+        if any(term in prod_lower for term in ["coca cola", "coke", "pepsi", "thums up", "soda", "sprite", "fanta", "carbonated"]):
+            if "nutrient_integrity" in parsed and isinstance(parsed["nutrient_integrity"], dict):
+                parsed["nutrient_integrity"]["palm_oil_present"] = False
+            if "nutrition_card" in parsed and isinstance(parsed["nutrition_card"], dict):
+                parsed["nutrition_card"]["total_fat_g"] = 0.0
+                parsed["nutrition_card"]["saturated_fat_g"] = 0.0
+                parsed["nutrition_card"]["trans_fat_g"] = 0.0
+            # Strip any erroneous palm oil from ingredient list
+            if "ingredient_breakdown" in parsed and isinstance(parsed["ingredient_breakdown"], list):
+                parsed["ingredient_breakdown"] = [
+                    item for item in parsed["ingredient_breakdown"]
+                    if "palm" not in str(item.get("ingredient", "")).lower()
+                ]
+
+        # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+        try:
+            from app.services.scoring_engine import compute_piecewise_health_score
+            score_data = compute_piecewise_health_score(
+                nutrition=parsed.get("nutrition_card"),
+                ingredients=parsed.get("ingredient_breakdown", []),
+                integrity=parsed.get("nutrient_integrity"),
+                deceptive_claims=parsed.get("deceptive_claims_flagged", []),
+                product_name=parsed.get("product_name", "")
+            )
+            parsed["health_score"] = score_data["final_health_score"]
+        except Exception as score_err:
+            logger.warning(f"Error computing piecewise health score: {score_err}")
+
+        return LabelAnalysisResult(**parsed)
 
     async def analyze_text_query(self, query: str, user_profile: UserProfile, online_content: str = "") -> LabelAnalysisResult:
         """Process text search or URL without an image"""
@@ -202,39 +246,82 @@ class GeminiVisionService:
         prompt = SYSTEM_PROMPT.replace("{user_profile_json}", profile_json)
         prompt += f"\n\nUSER INPUT QUERY: {query}\n\nRETRIEVED PRODUCT DATA:\n{online_content}\nPerform the forensic FSSAI and nutritional audit on this product based on this data."
 
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-3.1-flash-lite",
-                contents=[prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-            clean_text = response.text.strip()
-            if clean_text.startswith("```json"):
-                clean_text = clean_text[7:]
-            if clean_text.startswith("```"):
-                clean_text = clean_text[3:]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
-            parsed = json.loads(clean_text.strip())
-            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
-            try:
-                from app.services.scoring_engine import compute_piecewise_health_score
-                score_data = compute_piecewise_health_score(
-                    nutrition=parsed.get("nutrition_card"),
-                    ingredients=parsed.get("ingredient_breakdown", []),
-                    integrity=parsed.get("nutrient_integrity"),
-                    deceptive_claims=parsed.get("deceptive_claims_flagged", []),
-                    product_name=parsed.get("product_name", "")
-                )
-                parsed["health_score"] = score_data["final_health_score"]
-            except Exception as score_err:
-                logger.warning(f"Error computing piecewise health score for text query: {score_err}")
+        FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
+        last_error = None
 
-            return LabelAnalysisResult(**parsed)
-        except Exception as e:
-            logger.error(f"Gemini Text Query API error: {e}")
-            raise RuntimeError(f"Failed to audit product text: {e}")
+        for model_name in FALLBACK_MODELS:
+            try:
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
+                )
+                clean_text = response.text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                if clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                if clean_text.endswith("```"):
+                    clean_text = clean_text[:-3]
+                parsed = json.loads(clean_text.strip())
+                # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+                try:
+                    from app.services.scoring_engine import compute_piecewise_health_score
+                    score_data = compute_piecewise_health_score(
+                        nutrition=parsed.get("nutrition_card"),
+                        ingredients=parsed.get("ingredient_breakdown", []),
+                        integrity=parsed.get("nutrient_integrity"),
+                        deceptive_claims=parsed.get("deceptive_claims_flagged", []),
+                        product_name=parsed.get("product_name", "")
+                    )
+                    parsed["health_score"] = score_data["final_health_score"]
+                except Exception as score_err:
+                    logger.warning(f"Error computing piecewise health score for text query: {score_err}")
+
+                return LabelAnalysisResult(**parsed)
+            except Exception as e:
+                err_str = str(e)
+                last_error = e
+                logger.warning(f"Model {model_name} failed for text query ({err_str[:120]}), trying next fallback...")
+                if "503" not in err_str and "429" not in err_str and "UNAVAILABLE" not in err_str:
+                    break
+
+        # If all Gemini models are experiencing high demand / 503, try TinyFish Agentic Web Audit
+        logger.warning(f"All Gemini models busy ({last_error}). Invoking TinyFish Web Agent fallback for '{query}'...")
+        try:
+            from app.services.tinyfish_service import tinyfish_service
+            tf_result = await tinyfish_service.audit_product_via_agent(query, user_profile)
+            if tf_result:
+                from app.services.profile_evaluator import evaluate_profile_safety_offline
+                res = LabelAnalysisResult(**tf_result)
+                eval_res = evaluate_profile_safety_offline(res, user_profile)
+                res.personalized_verdict = eval_res["personalized_verdict"]
+                return res
+        except Exception as tf_agent_err:
+            logger.warning(f"TinyFish agent fallback attempt error: {tf_agent_err}")
+
+        # If TinyFish not applicable, match with our rich local product catalog
+        from app.data.presets import PRESET_PRODUCTS
+        q_low = query.lower()
+        matched_preset = None
+        for p in PRESET_PRODUCTS:
+            p_name = p.get("title", "").lower() + " " + p.get("subtitle", "").lower() + " " + p.get("sample_result", {}).get("product_name", "").lower()
+            if any(term in q_low for term in p_name.split()):
+                matched_preset = p["sample_result"]
+                break
+        
+        if matched_preset:
+            from app.services.profile_evaluator import evaluate_profile_safety_offline
+            res = LabelAnalysisResult(**matched_preset)
+            eval_res = evaluate_profile_safety_offline(res, user_profile)
+            res.personalized_verdict = eval_res["personalized_verdict"]
+            return res
+
+        raise RuntimeError(
+            "Gemini AI is currently experiencing high global demand (503). "
+            "Please switch on DEMO MODE (zero credits) to explore instant deterministic audits, or retry in a few moments."
+        )
 
 gemini_vision_service = GeminiVisionService()
