@@ -5,19 +5,20 @@ export interface StoreLinkOption {
 }
 
 export function buildStoreOptions(productName: string, userLocation?: string): StoreLinkOption[] {
-  const locSuffix = userLocation && userLocation.trim() ? ` ${userLocation.trim()}` : '';
-  const q = encodeURIComponent(`${productName}${locSuffix}`);
+  const cleanName = productName.replace(/\s*\(\+?\d+.*?\)/g, '').trim();
+  const q = encodeURIComponent(cleanName);
+  const locQ = userLocation && userLocation.trim() ? encodeURIComponent(`${cleanName} ${userLocation.trim()}`) : q;
   const affiliateTag = "labeltruth-21";
 
   return [
     {
       name: 'Blinkit',
-      url: `https://www.blinkit.com/s/?q=${q}&tag=${affiliateTag}`,
+      url: `https://www.blinkit.com/s/?q=${locQ}&tag=${affiliateTag}`,
       badge: '10-15 Min'
     },
     {
       name: 'Zepto',
-      url: `https://www.zeptonow.com/search?q=${q}&tag=${affiliateTag}`,
+      url: `https://www.zepto.com/search?query=${q}`,
       badge: '10 Min'
     },
     {

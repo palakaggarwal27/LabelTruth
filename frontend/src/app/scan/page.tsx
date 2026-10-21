@@ -146,7 +146,7 @@ export default function ScanPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await smartScan({ imageFile: fileOrBlob }, profile);
+      const data = await smartScan({ imageFile: fileOrBlob }, currentProfile);
       setResult(data);
       saveToHistory(data, fileOrBlob);
     } catch (err: unknown) {
