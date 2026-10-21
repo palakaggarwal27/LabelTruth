@@ -18,18 +18,42 @@ import { HealthProfileManager } from '@/components/HealthProfileManager';
 import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
 import { FALLBACK_PRESET_PRODUCTS } from '@/data/presets';
 
+import { DemoToggle } from '@/components/DemoToggle';
+import { evaluateProfileSafety } from '@/lib/api';
+
 const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 
 export default function ScanPage() {
-  const { profile } = useHealthProfile();
+  const { profile, activeProfile } = useHealthProfile();
+  const currentProfile = activeProfile || profile;
   const [activeTab, setActiveTab] = useState<'scan' | 'history'>('scan');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LabelAnalysisResult | null>(null);
   const [history, setHistory] = useState<ScannedHistoryItem[]>([]);
+  const [demoMode, setDemoMode] = useState(false);
 
-  // Load scan history from localStorage
+  // Instant Profile Re-evaluation when family profile is switched
+  React.useEffect(() => {
+    if (result && currentProfile) {
+      // Re-evaluate active result against active member in <50ms without re-running OCR
+      evaluateProfileSafety(result.product_name, currentProfile)
+        .then((evalData) => {
+          if (evalData && evalData.personalized_verdict) {
+            setResult((prev) => prev ? {
+              ...prev,
+              personalized_verdict: evalData.personalized_verdict as import('@/types').PersonalizedVerdict,
+              ingredient_breakdown: evalData.ingredient_breakdown || prev.ingredient_breakdown
+            } : null);
+          }
+        })
+        .catch((e) => console.warn('Instant profile evaluation notice:', e));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProfile.id, currentProfile.name]);
+
+  // Load scan history and check for shared URL / query search params from Web Share Target
   React.useEffect(() => {
     try {
       const saved = localStorage.getItem(SCAN_HISTORY_KEY);
@@ -39,6 +63,15 @@ export default function ScanPage() {
     } catch (e) {
       console.warn('Failed to load scan history:', e);
     }
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const initialQuery = params.get('query');
+      if (initialQuery) {
+        handleProcessQuery(initialQuery);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const saveToHistory = (res: LabelAnalysisResult, imageBlob?: Blob | File) => {
@@ -117,7 +150,7 @@ export default function ScanPage() {
     }
 
     try {
-      const data = await smartScan({ query: queryText, pincode: pincode || '110001' }, profile);
+      const data = await smartScan({ query: queryText, pincode: pincode || '110001', demoMode }, currentProfile);
       setResult(data);
       saveToHistory(data);
     } catch (err: unknown) {
@@ -173,8 +206,20 @@ export default function ScanPage() {
       </div>
 
       {/* Active Household Profile Switcher */}
-      <div className="mb-6">
+      <div className="mb-4">
         <HealthProfileManager />
+      </div>
+
+      {/* Offline Demo Mode Sandbox Suite */}
+      <div className="mb-6">
+        <DemoToggle
+          demoMode={demoMode}
+          onToggle={(val) => setDemoMode(val)}
+          onSelectTier={(tier) => {
+            setDemoMode(true);
+            handleProcessQuery(tier);
+          }}
+        />
       </div>
 
       {/* Tab Switcher */}

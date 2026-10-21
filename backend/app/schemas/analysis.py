@@ -10,14 +10,19 @@ class IngredientItem(BaseModel):
 class HealthierAlternative(BaseModel):
     name: str = Field(description='Recommended healthier brand or clean food alternative in India')
     product_name: Optional[str] = Field(default=None, description='Alternative product name alias')
-    health_score: Optional[int] = Field(default=80, description='Audited health score (must be >= 70)')
-    key_benefit: str = Field(description='Primary health advantage over current product')
-    price_comparison: str = Field(description='Realistic price comparison context e.g., Comparable price or ~1.2x')
-    personalized_fit: str = Field(description='Why this alternative fits user dietary and medical profile')
+    health_score: Optional[int] = Field(default=80, description='Audited health score')
+    key_benefit: Optional[str] = Field(default='', description='Primary health advantage over current product')
+    price_comparison: Optional[str] = Field(default='Comparable', description='Realistic price comparison context')
+    personalized_fit: Optional[str] = Field(default='', description='Why this alternative fits user dietary and medical profile')
     store_url: Optional[str] = Field(default=None, description='Quick-commerce or brand store link')
     direct_pdp_url: Optional[str] = Field(default=None, description='Direct Product Detail Page URL on Blinkit or Zepto')
     pincode_available: bool = Field(default=True, description='Whether available at delivery pincode')
     reason: Optional[str] = Field(default=None, description='Clinical reason for recommendation')
+    type: Optional[str] = Field(default='CLEAN_COMMERCIAL', description='CLEAN_COMMERCIAL, BEST_COMMERCIAL_AVAILABLE, or HOMEMADE_RECIPE')
+    delta_vs_scanned: Optional[str] = Field(default=None, description='Comparative delta e.g. +18 pts')
+    warning_tag: Optional[str] = Field(default=None, description='Warning tag if Tier 2 commercial product')
+    recipe_url: Optional[str] = Field(default=None, description='Verified YouTube or recipe search URL for Tier 3')
+    is_direct_pdp: bool = Field(default=False, description='True if verified direct PDP URL')
 
 class ProteinAudit(BaseModel):
     declared_protein_g: float = Field(default=0.0, description='Declared protein in grams per 100g or serving')

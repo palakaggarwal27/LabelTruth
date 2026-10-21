@@ -8,6 +8,7 @@ import { HealthProfileModal } from '@/components/HealthProfileModal';
 export const metadata: Metadata = {
   title: 'LabelTruth | Transparent Food Labeling & Consumer Protection',
   description: 'Evidence-based food label scanner auditing Indian packaged foods against FSSAI 2020 standards and personalized medical profiles.',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({

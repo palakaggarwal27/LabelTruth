@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult } from '@/types';
+import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult, IngredientItem } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -42,8 +42,19 @@ export const analyzeLabel = async (
   return res.data;
 };
 
+export const evaluateProfileSafety = async (
+  productHash: string,
+  activeProfile: UserProfile
+): Promise<{ personalized_verdict: string; contraindications: string[]; ingredient_breakdown: IngredientItem[] }> => {
+  const res = await apiClient.post('/api/evaluate-profile-safety', {
+    product_hash: productHash,
+    active_profile: activeProfile,
+  });
+  return res.data;
+};
+
 export const smartScan = async (
-  input: { query?: string; imageFile?: Blob | File; pincode?: string },
+  input: { query?: string; imageFile?: Blob | File; pincode?: string; demoMode?: boolean },
   userProfile: UserProfile
 ): Promise<LabelAnalysisResult> => {
   const formData = new FormData();
@@ -55,6 +66,9 @@ export const smartScan = async (
     formData.append('query', input.query);
   }
   formData.append('pincode', input.pincode || '110001');
+  if (input.demoMode) {
+    formData.append('demo_mode', 'true');
+  }
   formData.append('user_profile', JSON.stringify(userProfile));
 
   try {

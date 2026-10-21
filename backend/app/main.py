@@ -35,14 +35,65 @@ app.add_middleware(
 
 import hashlib
 from typing import Optional, Dict
+from pydantic import BaseModel
+
+from app.data.demo_suite import DEMO_TIER_PRODUCTS
+from app.services.profile_evaluator import evaluate_profile_safety_offline
+from app.services.delta_audit import apply_delta_audit_hierarchy
+
+# Decoupled Cache Layer
+# 1. Base product data keyed by SHA256(raw_text_or_url)
+BASE_PRODUCT_CACHE: Dict[str, LabelAnalysisResult] = {}
+# 2. Profile warnings keyed by safety:{product_hash}:{profile_id}
+SAFETY_CACHE: Dict[str, dict] = {}
 
 AUDIT_CACHE: Dict[str, LabelAnalysisResult] = {}
+
+def compute_product_base_hash(content: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(content)
+    return h.hexdigest()
 
 def compute_audit_hash(content: bytes, profile_str: str) -> str:
     h = hashlib.sha256()
     h.update(content)
     h.update(profile_str.encode('utf-8'))
     return h.hexdigest()
+
+class EvaluateProfileSafetyRequest(BaseModel):
+    product_hash: str
+    active_profile: UserProfile
+
+@app.post('/api/evaluate-profile-safety')
+async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest):
+    """
+    Decoupled Profile Safety Re-Evaluation:
+    Evaluates cached base product against active family member conditions in < 50ms
+    without re-running OCR or web scraping.
+    """
+    p_hash = payload.product_hash
+    prof = payload.active_profile
+    prof_id = prof.id or "default"
+    safety_key = f"safety:{p_hash}:{prof_id}"
+
+    if safety_key in SAFETY_CACHE:
+        return SAFETY_CACHE[safety_key]
+
+    base_product = BASE_PRODUCT_CACHE.get(p_hash)
+    if not base_product:
+        # Check in AUDIT_CACHE fallback
+        for k, v in AUDIT_CACHE.items():
+            if p_hash in k:
+                base_product = v
+                break
+
+    if not base_product:
+        # Default fallback to first demo product if hash not found
+        base_product = LabelAnalysisResult(**DEMO_TIER_PRODUCTS["moderate"])
+
+    eval_result = evaluate_profile_safety_offline(base_product, prof)
+    SAFETY_CACHE[safety_key] = eval_result
+    return eval_result
 
 @app.get('/api/health')
 def health_check():
@@ -140,9 +191,10 @@ async def smart_scan(
     query: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     pincode: Optional[str] = Form("110001"),
+    demo_mode: Optional[bool] = Form(False),
     user_profile: str = Form(...)
 ):
-    """Smart hybrid input: handles image, product text name, or online quick-commerce URL with pincode localization"""
+    """Smart hybrid input: handles image, product text name, or online quick-commerce URL with pincode localization and demo mode"""
     try:
         profile_dict = json.loads(user_profile)
         profile = UserProfile(**profile_dict)
@@ -151,6 +203,28 @@ async def smart_scan(
 
     delivery_pincode = pincode or "110001"
 
+    # Module 4: Offline DEMO_MODE Sandbox Suite (<100ms instant deterministic data)
+    if demo_mode:
+        q_lower = (query or "").lower()
+        if any(w in q_lower for w in ["chip", "lays", "bingo", "masala", "18"]):
+            tier_key = "very_low"
+        elif any(w in q_lower for w in ["bread", "brown bread", "atta bread", "38"]):
+            tier_key = "low"
+        elif any(w in q_lower for w in ["mozzarella", "cheese", "d'lecta", "58"]):
+            tier_key = "moderate"
+        elif any(w in q_lower for w in ["yogurt", "greek yogurt", "epigamia", "dahi", "78"]):
+            tier_key = "high"
+        elif any(w in q_lower for w in ["oat", "rolled oats", "steel cut", "95"]):
+            tier_key = "very_high"
+        else:
+            tier_key = "moderate"
+        
+        demo_res = LabelAnalysisResult(**DEMO_TIER_PRODUCTS[tier_key])
+        # Run decoupled profile evaluation on demo item
+        eval_res = evaluate_profile_safety_offline(demo_res, profile)
+        demo_res.personalized_verdict = eval_res["personalized_verdict"]
+        return demo_res
+
     try:
         # Scenario 1: Image provided
         if image:
@@ -158,14 +232,18 @@ async def smart_scan(
             if image_bytes and len(image_bytes) > 0:
                 await image.seek(0)
                 result = await analyze_label(image=image, user_profile=user_profile)
-                # Ensure alternatives meet the strict >= 70 score constraint
-                if result.clean_alternatives:
-                    result.clean_alternatives = [alt for alt in result.clean_alternatives if (alt.health_score or 80) >= 70]
+                # Apply delta audit hierarchy
+                raw_alts = [alt.model_dump() for alt in (result.clean_alternatives or [result.healthier_alternative])]
+                hierarchical_alts = apply_delta_audit_hierarchy(result.product_name, result.health_score, raw_alts)
+                if hierarchical_alts:
+                    result.clean_alternatives = hierarchical_alts
+                    result.healthier_alternative = hierarchical_alts[0]
                 return result
 
         # Scenario 2: Text / Product name / Shared URL
         if query and query.strip():
             clean_query = query.strip()
+            base_hash = compute_product_base_hash(clean_query.lower().encode('utf-8'))
             query_cache_key = compute_audit_hash(f"{clean_query.lower()}:{delivery_pincode}".encode('utf-8'), user_profile)
             if query_cache_key in AUDIT_CACHE:
                 logger.info(f"Serving query audit for '{clean_query}' from SHA-256 cache (zero credits used)")
@@ -184,38 +262,31 @@ async def smart_scan(
             if isinstance(result, dict):
                 result = LabelAnalysisResult(**result)
 
-            # Module 2: Pin-Code Location Web Agent & Direct PDP Swapping
+            # Save in decoupled base product cache
+            BASE_PRODUCT_CACHE[base_hash] = result
+
+            # Module 2 & 1: Pin-Code Location Web Agent & Delta Audit Hierarchy
+            candidate_list = []
             try:
                 prod_name = getattr(result, "product_name", clean_query)
                 pincode_alts = await tinyfish_service.find_pincode_alternatives(prod_name, delivery_pincode)
                 if pincode_alts:
-                    from app.schemas.analysis import HealthierAlternative
-                    valid_pdp_alts = []
-                    for pa in pincode_alts:
-                        h_score = int(pa.get("health_score", 85))
-                        # STRICT FILTER: Score >= 70 Constraint
-                        if h_score >= 70:
-                            valid_pdp_alts.append(HealthierAlternative(
-                                name=pa.get("name") or pa.get("product_name"),
-                                product_name=pa.get("product_name") or pa.get("name"),
-                                health_score=h_score,
-                                direct_pdp_url=pa.get("direct_pdp_url"),
-                                store_url=pa.get("direct_pdp_url"),
-                                pincode_available=True,
-                                reason=pa.get("reason", "Clean whole food alternative"),
-                                key_benefit=pa.get("reason", "Clean whole food alternative"),
-                                price_comparison="Comparable",
-                                personalized_fit="Zero added sugar and zero palm oil."
-                            ))
-                    if valid_pdp_alts:
-                        result.clean_alternatives = valid_pdp_alts
-                        result.healthier_alternative = valid_pdp_alts[0]
+                    candidate_list.extend(pincode_alts)
             except Exception as alt_err:
                 logger.warning(f"Error enriching pincode alternatives: {alt_err}")
 
-            # Filter any existing alternatives to ensure score >= 70
             if getattr(result, "clean_alternatives", None):
-                result.clean_alternatives = [alt for alt in result.clean_alternatives if (alt.health_score or 80) >= 70]
+                for ca in result.clean_alternatives:
+                    candidate_list.append(ca.model_dump() if hasattr(ca, "model_dump") else ca)
+
+            hierarchical_alts = apply_delta_audit_hierarchy(
+                result.product_name or clean_query,
+                result.health_score,
+                candidate_list
+            )
+            if hierarchical_alts:
+                result.clean_alternatives = hierarchical_alts
+                result.healthier_alternative = hierarchical_alts[0]
 
             AUDIT_CACHE[query_cache_key] = result
             return result

@@ -12,13 +12,18 @@ export interface HealthierAlternative {
   name: string;
   product_name?: string;
   health_score?: number;
-  key_benefit: string;
-  price_comparison: string;
-  personalized_fit: string;
+  key_benefit?: string;
+  price_comparison?: string;
+  personalized_fit?: string;
   store_url?: string;
   direct_pdp_url?: string;
   pincode_available?: boolean;
   reason?: string;
+  type?: 'CLEAN_COMMERCIAL' | 'BEST_COMMERCIAL_AVAILABLE' | 'HOMEMADE_RECIPE';
+  delta_vs_scanned?: string;
+  warning_tag?: string;
+  recipe_url?: string;
+  is_direct_pdp?: boolean;
 }
 
 export interface ProteinAudit {

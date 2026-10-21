@@ -46,40 +46,73 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, c
             >
               <div>
                 <div className="flex items-center justify-between gap-2 mt-1">
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                    Clean Swap #{idx + 1}
+                  <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded font-semibold border ${
+                    alt.type === 'HOMEMADE_RECIPE'
+                      ? 'bg-purple-50 text-purple-800 border-purple-200'
+                      : alt.type === 'BEST_COMMERCIAL_AVAILABLE'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  }`}>
+                    {alt.type === 'HOMEMADE_RECIPE' ? 'Whole-Food Recipe' : alt.type === 'BEST_COMMERCIAL_AVAILABLE' ? 'Best Available' : `Clean Upgrade #${idx + 1}`}
                   </span>
-                  {alt.health_score && (
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
-                      Score: {alt.health_score}/100
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {alt.delta_vs_scanned && (
+                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-800 border border-zinc-200">
+                        {alt.delta_vs_scanned}
+                      </span>
+                    )}
+                    {alt.health_score && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
+                        {alt.health_score}/100
+                      </span>
+                    )}
+                  </div>
                 </div>
+
                 <h4 className="text-sm font-semibold text-zinc-900 mt-2">
                   {alt.product_name || alt.name}
                 </h4>
+
+                {/* Tier 2 Warning Tag */}
+                {alt.warning_tag && (
+                  <div className="mt-1.5 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 font-medium">
+                    {alt.warning_tag}
+                  </div>
+                )}
+
                 <p className="text-xs text-zinc-600 mt-1 font-light leading-relaxed">
                   {alt.reason || alt.key_benefit}
                 </p>
-                {alt.direct_pdp_url && (
+
+                {/* Action Button: Direct PDP vs YouTube Recipe Search */}
+                {alt.is_direct_pdp && alt.direct_pdp_url ? (
                   <div className="mt-2.5">
-                    <a
-                      href={alt.direct_pdp_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => window.open(alt.direct_pdp_url, '_blank')}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
                     >
                       <span>Direct Product Link (PDP)</span>
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
                   </div>
-                )}
+                ) : alt.recipe_url || alt.type === 'HOMEMADE_RECIPE' ? (
+                  <div className="mt-2.5">
+                    <button
+                      onClick={() => window.open(alt.recipe_url || `https://www.youtube.com/results?search_query=${encodeURIComponent(alt.name || alt.product_name || 'healthy recipe')}`, '_blank')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                    >
+                      <span>Watch Verified YouTube Recipe</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : null}
+
                 <div className="mt-3 pt-3 border-t border-zinc-100 text-[11px] space-y-1">
                   <div className="text-zinc-500">
-                    <span className="font-medium text-zinc-700">Price:</span> {alt.price_comparison}
+                    <span className="font-medium text-zinc-700">Price:</span> {alt.price_comparison || 'Comparable'}
                   </div>
                   <div className="text-zinc-500">
-                    <span className="font-medium text-zinc-700">Profile Fit:</span> {alt.personalized_fit}
+                    <span className="font-medium text-zinc-700">Profile Fit:</span> {alt.personalized_fit || 'Clean Whole-Food'}
                   </div>
                 </div>
               </div>

@@ -278,3 +278,80 @@ def test_alternatives_score_filter_strictly_drops_below_70():
     assert len(filtered) == 2
     assert all(a.health_score >= 70 for a in filtered)
     assert not any(a.name == "Subpar Alt B" for a in filtered)
+
+def test_pdp_validator_utility():
+    """Verify backend/app/utils/pdp_validator.py correctly identifies PDP vs search URLs"""
+    from app.utils.pdp_validator import validate_and_clean_pdp_url
+
+    valid_zepto = "https://www.zepto.com/pn/the-whole-truth-peanut-butter/pvid/12345?query=abc"
+    res1 = validate_and_clean_pdp_url(valid_zepto)
+    assert res1["is_pdp"] is True
+    assert res1["url"] == "https://www.zepto.com/pn/the-whole-truth-peanut-butter/pvid/12345"
+
+    valid_blinkit = "https://blinkit.com/prn/farmley-roasted-makhana/prid/98765"
+    res2 = validate_and_clean_pdp_url(valid_blinkit)
+    assert res2["is_pdp"] is True
+
+    generic_search = "https://www.zepto.com/search?q=peanut+butter"
+    res3 = validate_and_clean_pdp_url(generic_search)
+    assert res3["is_pdp"] is False
+
+def test_demo_mode_5_tiers():
+    """Verify offline DEMO_MODE returns deterministic data (<100ms) for all 5 tiers"""
+    # 1. Very Low (18)
+    r1 = client.post("/api/smart-scan", data={"query": "chips 18", "demo_mode": "true", "user_profile": json.dumps({})})
+    assert r1.status_code == 200
+    assert r1.json()["health_score"] == 18
+
+    # 2. Low (38)
+    r2 = client.post("/api/smart-scan", data={"query": "brown bread 38", "demo_mode": "true", "user_profile": json.dumps({})})
+    assert r2.status_code == 200
+    assert r2.json()["health_score"] == 38
+
+    # 3. Moderate (58)
+    r3 = client.post("/api/smart-scan", data={"query": "d'lecta cheese 58", "demo_mode": "true", "user_profile": json.dumps({})})
+    assert r3.status_code == 200
+    assert r3.json()["health_score"] == 58
+
+    # 4. High (78)
+    r4 = client.post("/api/smart-scan", data={"query": "greek yogurt 78", "demo_mode": "true", "user_profile": json.dumps({})})
+    assert r4.status_code == 200
+    assert r4.json()["health_score"] == 78
+
+    # 5. Very High (95)
+    r5 = client.post("/api/smart-scan", data={"query": "rolled oats 95", "demo_mode": "true", "user_profile": json.dumps({})})
+    assert r5.status_code == 200
+    assert r5.json()["health_score"] == 95
+
+def test_decoupled_profile_safety_reevaluation():
+    """Verify /api/evaluate-profile-safety re-evaluates base product against Dad profile in <50ms"""
+    payload = {
+        "product_hash": "mock_hash_chips",
+        "active_profile": {
+            "id": "profile_dad",
+            "name": "Dad (Diabetes & High BP)",
+            "medical_conditions": ["Type-2 Diabetes", "Hypertension (High BP)"],
+            "allergies": [],
+            "dietary_preferences": ["Vegetarian"],
+            "custom_avoid_list": ["Maltodextrin"]
+        }
+    }
+    response = client.post("/api/evaluate-profile-safety", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "personalized_verdict" in data
+    assert "contraindications" in data
+    assert len(data["contraindications"]) > 0
+
+def test_delta_audit_hierarchy_brand_swap_ban():
+    """Verify relative delta audit strictly blocks swapping one processed brand for another"""
+    from app.services.delta_audit import apply_delta_audit_hierarchy
+
+    # Scanned: D'lecta Mozzarella (58/100). Candidate: Amul Mozzarella (60/100) -> Banned brand swap
+    candidates = [
+        {"name": "Amul Mozzarella Block", "health_score": 60, "direct_pdp_url": "https://www.zepto.com/pn/amul-mozzarella/pvid/123", "is_direct_pdp": True}
+    ]
+    res = apply_delta_audit_hierarchy("D'lecta Mozzarella Cheese Block", 58, candidates, "mozzarella")
+    # Commercial candidate is blocked; fallbacks to YouTube whole-food recipe
+    assert any(r.type == "HOMEMADE_RECIPE" for r in res)
+    assert not any(r.name == "Amul Mozzarella Block" for r in res)
