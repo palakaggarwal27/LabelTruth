@@ -108,7 +108,11 @@ export default function ScanPage() {
         result: res,
       };
       setHistory((prev) => {
-        const updated = [newItem, ...prev].slice(0, 30); // keep recent 30 scans
+        // Prevent duplicate consecutive or repeated additions of the same product
+        const filtered = prev.filter(
+          (item) => item.result.product_name.trim().toLowerCase() !== res.product_name.trim().toLowerCase()
+        );
+        const updated = [newItem, ...filtered].slice(0, 30); // keep recent 30 scans
         try {
           localStorage.setItem(SCAN_HISTORY_KEY, JSON.stringify(updated));
         } catch (e) {

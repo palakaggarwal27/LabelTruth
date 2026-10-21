@@ -1,8 +1,8 @@
-﻿import { LabelAnalysisResult } from "@/types";
+import { LabelAnalysisResult } from "@/types";
 
 export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
   very_low: {
-    product_name: "Crunchy Masala Potato Chips",
+    product_name: "Lay's India's Magic Masala Chips",
     health_score: 18,
     personalized_verdict: "AVOID (VIOLATES PROFILE)",
     simple_summary: "Ultra-processed deep-fried snack with 38% refined palm oil, intense sodium (750mg), and synthetic MSG (INS 621).",
@@ -65,7 +65,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
       personalized_fit: "Low glycemic load, heart safe, zero INS additives",
       type: "CLEAN_COMMERCIAL",
       delta_vs_scanned: "+70 pts",
-      direct_pdp_url: "https://www.zepto.com/pn/farmley-roasted-makhana/pvid/11223344",
+      direct_pdp_url: "https://www.blinkit.com/s/?q=Farmley+Roasted+Makhana",
       is_direct_pdp: true,
       pincode_available: true,
       reason: "100% whole grain puffed lotus seeds with zero seed oil frying."
@@ -80,7 +80,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
         personalized_fit: "Heart safe and diabetic friendly",
         type: "CLEAN_COMMERCIAL",
         delta_vs_scanned: "+70 pts",
-        direct_pdp_url: "https://www.zepto.com/pn/farmley-roasted-makhana/pvid/11223344",
+        direct_pdp_url: "https://www.blinkit.com/s/?q=Farmley+Roasted+Makhana",
         is_direct_pdp: true,
         pincode_available: true,
         reason: "100% puffed lotus seed with no industrial frying."
@@ -105,7 +105,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
   },
 
   low: {
-    product_name: "Commercial Whole Wheat 'Brown Bread'",
+    product_name: "English Oven Brown Bread",
     health_score: 38,
     personalized_verdict: "CAUTION",
     simple_summary: "Dyed refined flour masquerading as healthy whole wheat. Uses Maida as primary grain and INS 150d Caramel Colour IV for dark appearance.",
@@ -165,7 +165,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
       personalized_fit: "Genuine 100% whole grain fiber, low glycemic",
       type: "CLEAN_COMMERCIAL",
       delta_vs_scanned: "+48 pts",
-      direct_pdp_url: "https://www.zepto.com/pn/the-health-factory-zero-maida-bread/pvid/22334455",
+      direct_pdp_url: "https://www.blinkit.com/s/?q=The+Health+Factory+Zero+Maida+Bread",
       is_direct_pdp: true,
       pincode_available: true,
       reason: "Certified 100% whole grain flour without artificial coloring."
@@ -180,7 +180,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
         personalized_fit: "Clean whole grain",
         type: "CLEAN_COMMERCIAL",
         delta_vs_scanned: "+48 pts",
-        direct_pdp_url: "https://www.zepto.com/pn/the-health-factory-zero-maida-bread/pvid/22334455",
+        direct_pdp_url: "https://www.blinkit.com/s/?q=The+Health+Factory+Zero+Maida+Bread",
         is_direct_pdp: true,
         pincode_available: true,
         reason: "100% whole grain, zero artificial dyes."
@@ -248,7 +248,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
       personalized_fit: "Unprocessed whole dairy with easy-to-digest A2 beta-casein",
       type: "CLEAN_COMMERCIAL",
       delta_vs_scanned: "+30 pts",
-      direct_pdp_url: "https://www.zepto.com/pn/organic-a2-paneer/pvid/33445566",
+      direct_pdp_url: "https://www.blinkit.com/s/?q=Organic+Paneer",
       is_direct_pdp: true,
       pincode_available: true,
       reason: "Pure curdled A2 whole milk without chemical stabilizers."
@@ -339,7 +339,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
       personalized_fit: "Peak probiotic diversity and optimal gut absorption",
       type: "CLEAN_COMMERCIAL",
       delta_vs_scanned: "+15 pts",
-      direct_pdp_url: "https://www.zepto.com/pn/two-brothers-a2-dahi/pvid/44556677",
+      direct_pdp_url: "https://www.blinkit.com/s/?q=Two+Brothers+A2+Dahi",
       is_direct_pdp: true,
       pincode_available: true,
       reason: "100% organic pasture-raised A2 dairy."
@@ -354,7 +354,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
         personalized_fit: "Gut microbiome support",
         type: "CLEAN_COMMERCIAL",
         delta_vs_scanned: "+15 pts",
-        direct_pdp_url: "https://www.zepto.com/pn/two-brothers-a2-dahi/pvid/44556677",
+        direct_pdp_url: "https://www.blinkit.com/s/?q=Two+Brothers+A2+Dahi",
         is_direct_pdp: true,
         pincode_available: true,
         reason: "Zero added sugar, zero thickeners."
@@ -415,7 +415,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
       personalized_fit: "Optimal for blood glucose stabilization",
       type: "CLEAN_COMMERCIAL",
       delta_vs_scanned: "+3 pts",
-      direct_pdp_url: "https://www.zepto.com/pn/natureland-steel-cut-oats/pvid/55667788",
+      direct_pdp_url: "https://www.blinkit.com/s/?q=Natureland+Steel+Cut+Oats",
       is_direct_pdp: true,
       pincode_available: true,
       reason: "100% organic whole grain."
@@ -430,7 +430,7 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
         personalized_fit: "Peak whole food integrity",
         type: "CLEAN_COMMERCIAL",
         delta_vs_scanned: "+3 pts",
-        direct_pdp_url: "https://www.zepto.com/pn/natureland-steel-cut-oats/pvid/55667788",
+        direct_pdp_url: "https://www.blinkit.com/s/?q=Natureland+Steel+Cut+Oats",
         is_direct_pdp: true,
         pincode_available: true,
         reason: "Unrefined whole grain."
