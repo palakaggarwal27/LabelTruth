@@ -139,7 +139,26 @@ export default function ScanPage() {
     setError(null);
     const normalized = queryText.trim().toLowerCase();
 
-    // 1. Check client-side history cache only on exact product name match
+    // 1. Check offline demo suite if demo mode is enabled or product query matches a demo tier
+    if (demoMode) {
+      const { LOCAL_DEMO_TIER_PRODUCTS } = await import('@/data/demoTiers');
+      let matchedKey = 'moderate';
+      if (normalized.includes('chip') || normalized.includes('18')) matchedKey = 'very_low';
+      else if (normalized.includes('bread') || normalized.includes('38')) matchedKey = 'low';
+      else if (normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('58')) matchedKey = 'moderate';
+      else if (normalized.includes('yogurt') || normalized.includes('greek') || normalized.includes('78')) matchedKey = 'high';
+      else if (normalized.includes('oat') || normalized.includes('95')) matchedKey = 'very_high';
+
+      const demoItem = LOCAL_DEMO_TIER_PRODUCTS[matchedKey];
+      if (demoItem) {
+        setResult(demoItem);
+        saveToHistory(demoItem);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // 2. Check client-side history cache only on exact product name match
     const cachedItem = history.find(
       (h) => h.result.product_name.trim().toLowerCase() === normalized
     );

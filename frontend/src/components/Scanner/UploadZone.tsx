@@ -38,6 +38,40 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
   };
 
   const [pincode, setPincode] = useState('110001');
+  const [detectingLoc, setDetectingLoc] = useState(false);
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser. Please enter your pincode manually.");
+      return;
+    }
+    setDetectingLoc(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+          const data = await res.json();
+          const detectedPin = data?.address?.postcode || '';
+          if (detectedPin) {
+            setPincode(detectedPin.replace(/\s+/g, ''));
+          } else {
+            alert(`Detected coordinates (${lat.toFixed(2)}, ${lon.toFixed(2)}). Defaulting to nearby pincode.`);
+          }
+        } catch {
+          console.warn("Could not reverse-geocode pincode, please enter manually.");
+        } finally {
+          setDetectingLoc(false);
+        }
+      },
+      (err) => {
+        console.warn("Location permission denied:", err);
+        setDetectingLoc(false);
+      },
+      { timeout: 8000 }
+    );
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +100,15 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
                 className="w-20 px-2 py-0.5 text-xs font-mono border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
                 title="Pincode for live Zepto/Blinkit availability check"
               />
+              <button
+                type="button"
+                onClick={handleDetectLocation}
+                disabled={detectingLoc}
+                className="px-2 py-0.5 bg-zinc-200 hover:bg-zinc-300 rounded text-[11px] font-medium transition-colors"
+                title="Detect current location pincode"
+              >
+                {detectingLoc ? "Locating..." : "📍 GPS"}
+              </button>
             </div>
           </div>
           <p className="text-[11px] text-zinc-500 mb-2">
