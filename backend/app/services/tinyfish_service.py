@@ -144,6 +144,8 @@ class TinyFishService:
             except Exception as search_err:
                 logger.warning(f"TinySearch fallback for pincode alternatives notice: {search_err}")
 
+        return clean_alts
+
     async def audit_product_via_agent(self, query_or_product: str, user_profile: Any) -> Optional[Dict[str, Any]]:
         """
         Agentic fallback: When Gemini API is unavailable or busy (503/429),

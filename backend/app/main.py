@@ -232,9 +232,24 @@ async def smart_scan(
             if image_bytes and len(image_bytes) > 0:
                 await image.seek(0)
                 result = await analyze_label(image=image, user_profile=user_profile)
+                
+                # Enrich with TinyFish live web agent pincode alternatives
+                candidate_list = []
+                if result.health_score < 85:
+                    try:
+                        from app.services.tinyfish_service import tinyfish_service
+                        pincode_alts = await tinyfish_service.find_pincode_alternatives(result.product_name, delivery_pincode)
+                        if pincode_alts:
+                            candidate_list.extend(pincode_alts)
+                    except Exception as alt_err:
+                        logger.warning(f"Error enriching image pincode alternatives: {alt_err}")
+
+                if getattr(result, "clean_alternatives", None):
+                    for ca in result.clean_alternatives:
+                        candidate_list.append(ca.model_dump() if hasattr(ca, "model_dump") else ca)
+
                 # Apply delta audit hierarchy
-                raw_alts = [alt.model_dump() for alt in (result.clean_alternatives or [result.healthier_alternative])]
-                hierarchical_alts = apply_delta_audit_hierarchy(result.product_name, result.health_score, raw_alts)
+                hierarchical_alts = apply_delta_audit_hierarchy(result.product_name, result.health_score, candidate_list)
                 if hierarchical_alts:
                     result.clean_alternatives = hierarchical_alts
                     result.healthier_alternative = hierarchical_alts[0]

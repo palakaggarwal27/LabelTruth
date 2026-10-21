@@ -1,4 +1,4 @@
-﻿"""
+"""
 Relative Delta Auditing & Category Sanity Swap Engine.
 Enforces:
 1. S_alternative >= 70 AND S_alternative >= S_scanned + 15 (Clean Commercial Upgrade)
@@ -19,10 +19,30 @@ def apply_delta_audit_hierarchy(
 ) -> List[HealthierAlternative]:
     """
     Applies the 3-tier hierarchy:
+    - Best in market: If scanned_health_score >= 85, declare product best available in market
     - Tier 1: Clean Commercial Upgrade (Score >= 70 AND Score >= Scanned + 15)
     - Tier 2: Best Commercial Option with nutrition warning tag if no commercial hits 70
     - Tier 3: Whole-Food Recipe Swap with YouTube search link
     """
+    # If the scanned product is already exceptionally clean (Score >= 85), do not force commercial alternatives
+    if scanned_health_score >= 85:
+        return [
+            HealthierAlternative(
+                name=f"{scanned_product_name} (Top Tier Choice)",
+                product_name=scanned_product_name,
+                health_score=scanned_health_score,
+                type="CLEAN_COMMERCIAL",
+                delta_vs_scanned="Current Product",
+                warning_tag="",
+                is_direct_pdp=False,
+                pincode_available=True,
+                reason="🏆 This product already demonstrates peak nutritional integrity with clean ingredients and no harmful additives. It is among the best available products in the market.",
+                key_benefit="No cleaner commercial alternative is necessary.",
+                price_comparison="Current Product",
+                personalized_fit="Optimal whole-food alignment."
+            )
+        ]
+
     scanned_lower = scanned_product_name.lower()
     clean_tier1 = []
     best_commercial = None
