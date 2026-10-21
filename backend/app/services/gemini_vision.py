@@ -157,7 +157,13 @@ class GeminiVisionService:
             mime_type="image/jpeg",
         )
 
-        FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
+        FALLBACK_MODELS = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
         last_error = None
         parsed = None
 
@@ -268,47 +274,70 @@ class GeminiVisionService:
         prompt = SYSTEM_PROMPT.replace("{user_profile_json}", profile_json)
         prompt += f"\n\nUSER INPUT QUERY: {query}\n\nRETRIEVED PRODUCT DATA:\n{online_content}\nPerform the forensic FSSAI and nutritional audit on this product based on this data."
 
-        FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"]
+        FALLBACK_MODELS = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
         last_error = None
+        parsed = None
 
-        for model_name in FALLBACK_MODELS:
+        # Build client pool
+        clients_to_try = [self.client] if self.client else []
+        for extra_key in GEMINI_API_KEYS:
+            if self.client and extra_key == GEMINI_API_KEY:
+                continue
             try:
-                response = self.client.models.generate_content(
-                    model=model_name,
-                    contents=[prompt],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                clean_text = response.text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                if clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                if clean_text.endswith("```"):
-                    clean_text = clean_text[:-3]
-                parsed = json.loads(clean_text.strip())
-                # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
-                try:
-                    from app.services.scoring_engine import compute_piecewise_health_score
-                    score_data = compute_piecewise_health_score(
-                        nutrition=parsed.get("nutrition_card"),
-                        ingredients=parsed.get("ingredient_breakdown", []),
-                        integrity=parsed.get("nutrient_integrity"),
-                        deceptive_claims=parsed.get("deceptive_claims_flagged", []),
-                        product_name=parsed.get("product_name", "")
-                    )
-                    parsed["health_score"] = score_data["final_health_score"]
-                except Exception as score_err:
-                    logger.warning(f"Error computing piecewise health score for text query: {score_err}")
+                clients_to_try.append(genai.Client(api_key=extra_key))
+            except Exception:
+                pass
 
-                return LabelAnalysisResult(**parsed)
-            except Exception as e:
-                err_str = str(e)
-                last_error = e
-                logger.warning(f"Model {model_name} failed for text query ({err_str[:120]}), trying next fallback...")
-                if "503" not in err_str and "429" not in err_str and "UNAVAILABLE" not in err_str:
+        for cl in (clients_to_try or [self.client]):
+            for model_name in FALLBACK_MODELS:
+                try:
+                    response = cl.models.generate_content(
+                        model=model_name,
+                        contents=[prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    parsed = json.loads(clean_text.strip())
                     break
+                except Exception as e:
+                    err_str = str(e)
+                    last_error = e
+                    logger.warning(f"Model {model_name} failed for text query ({err_str[:120]}), trying next fallback...")
+                    if "503" not in err_str and "429" not in err_str and "UNAVAILABLE" not in err_str and "404" not in err_str:
+                        break
+            if parsed:
+                break
+
+        if parsed:
+            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+            try:
+                from app.services.scoring_engine import compute_piecewise_health_score
+                score_data = compute_piecewise_health_score(
+                    nutrition=parsed.get("nutrition_card"),
+                    ingredients=parsed.get("ingredient_breakdown", []),
+                    integrity=parsed.get("nutrient_integrity"),
+                    deceptive_claims=parsed.get("deceptive_claims_flagged", []),
+                    product_name=parsed.get("product_name", "")
+                )
+                parsed["health_score"] = score_data["final_health_score"]
+            except Exception as score_err:
+                logger.warning(f"Error computing piecewise health score for text query: {score_err}")
+
+            return LabelAnalysisResult(**parsed)
 
         # If all Gemini models are experiencing high demand / 503, try TinyFish Agentic Web Audit
         logger.warning(f"All Gemini models busy ({last_error}). Invoking TinyFish Web Agent fallback for '{query}'...")

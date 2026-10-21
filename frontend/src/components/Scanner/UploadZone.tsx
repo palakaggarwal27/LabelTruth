@@ -41,35 +41,68 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
   const [detectingLoc, setDetectingLoc] = useState(false);
 
   const handleDetectLocation = () => {
+    setDetectingLoc(true);
+
+    const tryIpFallback = async () => {
+      try {
+        const ipRes = await fetch("https://ipapi.co/json/");
+        if (ipRes.ok) {
+          const ipData = await ipRes.json();
+          if (ipData?.postal) {
+            setPincode(ipData.postal.replace(/\s+/g, ''));
+            return true;
+          }
+        }
+      } catch (e) {
+        console.warn("IP-based location detection failed:", e);
+      }
+      return false;
+    };
+
     if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser. Please enter your pincode manually.");
+      tryIpFallback().finally(() => setDetectingLoc(false));
       return;
     }
-    setDetectingLoc(true);
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
-          const data = await res.json();
-          const detectedPin = data?.address?.postcode || '';
+          // Free, high-reliability CORS-enabled reverse geocoding
+          const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+          if (res.ok) {
+            const data = await res.json();
+            const pin = data?.postcode || data?.postCode;
+            if (pin && /^\d{6}$/.test(pin.replace(/\s+/g, ''))) {
+              setPincode(pin.replace(/\s+/g, ''));
+              return;
+            }
+          }
+          // Secondary fallback to openstreetmap
+          const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
+            headers: { 'Accept': 'application/json' }
+          });
+          const osmData = await osmRes.json();
+          const detectedPin = osmData?.address?.postcode || '';
           if (detectedPin) {
             setPincode(detectedPin.replace(/\s+/g, ''));
           } else {
-            alert(`Detected coordinates (${lat.toFixed(2)}, ${lon.toFixed(2)}). Defaulting to nearby pincode.`);
+            await tryIpFallback();
           }
         } catch {
-          console.warn("Could not reverse-geocode pincode, please enter manually.");
+          await tryIpFallback();
         } finally {
           setDetectingLoc(false);
         }
       },
-      (err) => {
-        console.warn("Location permission denied:", err);
+      async (err) => {
+        console.warn("Browser GPS permission denied or timeout:", err);
+        // Seamless fallback to IP location without prompting permissions
+        await tryIpFallback();
         setDetectingLoc(false);
       },
-      { timeout: 8000 }
+      { timeout: 7000, enableHighAccuracy: true }
     );
   };
 

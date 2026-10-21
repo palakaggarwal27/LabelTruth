@@ -379,8 +379,10 @@ export default function ScanPage() {
             </div>
           )}
 
-          {/* Preset Demo Bar */}
-          <PresetBar onSelectPreset={handleSelectPreset} loading={loading} />
+          {/* Preset Demo Bar (only shown in Demo Mode) */}
+          {demoMode && (
+            <PresetBar onSelectPreset={handleSelectPreset} loading={loading} />
+          )}
         </div>
       ) : (
         <div className="space-y-6">
