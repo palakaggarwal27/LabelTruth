@@ -1,6 +1,7 @@
 "use client";
 
 import { CompareProducts } from '@/components/CompareProducts';
+import { CartAuditView } from '@/components/CartAudit/CartAuditView';
 
 import React, { useState } from 'react';
 import { UploadZone } from '@/components/Scanner/UploadZone';
@@ -13,7 +14,7 @@ import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan } from '@/lib/api';
 import { LabelAnalysisResult, ScannedHistoryItem } from '@/types';
-import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale } from 'lucide-react';
+import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale, ShoppingCart } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
 import { HealthProfileManager } from '@/components/HealthProfileManager';
 import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
@@ -28,7 +29,7 @@ const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 export default function ScanPage() {
   const { profile, activeProfile } = useHealthProfile();
   const currentProfile = activeProfile || profile;
-  const [activeTab, setActiveTab] = useState<'scan' | 'compare' | 'history'>('scan');
+  const [activeTab, setActiveTab] = useState<'scan' | 'compare' | 'cart' | 'history'>('scan');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -312,6 +313,18 @@ export default function ScanPage() {
         </button>
 
         <button
+          onClick={() => setActiveTab('cart')}
+          className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
+            activeTab === 'cart'
+              ? 'border-zinc-900 text-zinc-900'
+              : 'border-transparent text-zinc-500 hover:text-zinc-800'
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4" />
+          <span>Cart Audit (Zepto / Blinkit)</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('history')}
           className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'history'
@@ -347,6 +360,8 @@ export default function ScanPage() {
 
       {activeTab === 'compare' ? (
         <CompareProducts />
+      ) : activeTab === 'cart' ? (
+        <CartAuditView />
       ) : activeTab === 'history' ? (
         <ScanHistoryList
           history={history}

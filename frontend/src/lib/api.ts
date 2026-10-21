@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult, IngredientItem } from '@/types';
+import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult, IngredientItem, CartAuditResponse } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -104,4 +104,26 @@ export const sendChatMessage = async (
     product_context: productContext,
   });
   return res.data.reply;
+};
+
+export const auditCart = async (
+  input: { imageFile?: Blob | File; cartUrl?: string; pincode?: string },
+  userProfile: UserProfile
+): Promise<CartAuditResponse> => {
+  const formData = new FormData();
+  if (input.imageFile) {
+    formData.append('image', input.imageFile, 'cart_capture.jpg');
+  }
+  if (input.cartUrl) {
+    formData.append('cart_url', input.cartUrl);
+  }
+  formData.append('pincode', input.pincode || '110001');
+  formData.append('user_profile', JSON.stringify(userProfile));
+
+  const res = await apiClient.post<CartAuditResponse>('/api/audit-cart', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
 };

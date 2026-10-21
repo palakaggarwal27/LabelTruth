@@ -9,6 +9,8 @@ from app.config import PORT, HOST
 from app.schemas.analysis import LabelAnalysisResult
 from app.schemas.user_profile import UserProfile
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.cart_audit import CartAuditResponse
+from app.services.cart_audit_service import cart_audit_service
 from app.schemas.condition import ValidateConditionRequest, ValidateConditionResponse
 from app.services.gemini_vision import gemini_vision_service
 from app.services.chat_service import chat_service
@@ -282,13 +284,16 @@ async def smart_scan(
 
             # Module 2 & 1: Pin-Code Location Web Agent & Delta Audit Hierarchy
             candidate_list = []
-            try:
-                prod_name = getattr(result, "product_name", clean_query)
-                pincode_alts = await tinyfish_service.find_pincode_alternatives(prod_name, delivery_pincode)
-                if pincode_alts:
-                    candidate_list.extend(pincode_alts)
-            except Exception as alt_err:
-                logger.warning(f"Error enriching pincode alternatives: {alt_err}")
+            cleaner_hint = getattr(result, "cleaner_alternative_exists_in_market", False)
+            should_search = result.health_score < 85 or cleaner_hint
+            if should_search:
+                try:
+                    prod_name = getattr(result, "product_name", clean_query)
+                    pincode_alts = await tinyfish_service.find_pincode_alternatives(prod_name, delivery_pincode)
+                    if pincode_alts:
+                        candidate_list.extend(pincode_alts)
+                except Exception as alt_err:
+                    logger.warning(f"Error enriching pincode alternatives: {alt_err}")
 
             if getattr(result, "clean_alternatives", None):
                 for ca in result.clean_alternatives:
@@ -297,7 +302,8 @@ async def smart_scan(
             hierarchical_alts = apply_delta_audit_hierarchy(
                 result.product_name or clean_query,
                 result.health_score,
-                candidate_list
+                candidate_list,
+                cleaner_exists_hint=cleaner_hint
             )
             if hierarchical_alts:
                 result.clean_alternatives = hierarchical_alts
@@ -326,3 +332,36 @@ async def chat_endpoint(payload: ChatRequest):
     except Exception as e:
         logger.error(f'Chat error: {e}')
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/audit-cart', response_model=CartAuditResponse)
+async def audit_cart_endpoint(
+    image: Optional[UploadFile] = File(None),
+    cart_url: Optional[str] = Form(None),
+    pincode: str = Form("110001"),
+    user_profile: str = Form("{}")
+):
+    try:
+        profile_dict = json.loads(user_profile)
+        profile = UserProfile(**profile_dict)
+    except Exception:
+        profile = UserProfile()
+
+    image_bytes = None
+    if image:
+        try:
+            image_bytes = await image.read()
+        except Exception:
+            pass
+
+    try:
+        response = await cart_audit_service.audit_cart(
+            image_bytes=image_bytes,
+            cart_url=cart_url,
+            pincode=pincode.strip() or "110001",
+            user_profile=profile
+        )
+        return response
+    except Exception as e:
+        logger.error(f"Cart audit error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to audit cart: {str(e)}")

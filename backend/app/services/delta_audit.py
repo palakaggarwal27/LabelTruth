@@ -15,7 +15,8 @@ def apply_delta_audit_hierarchy(
     scanned_product_name: str,
     scanned_health_score: int,
     candidate_alternatives: List[Dict[str, Any]],
-    category_hint: str = ""
+    category_hint: str = "",
+    cleaner_exists_hint: bool = False
 ) -> List[HealthierAlternative]:
     """
     Applies the 3-tier hierarchy:
@@ -24,8 +25,8 @@ def apply_delta_audit_hierarchy(
     - Tier 2: Best Commercial Option with nutrition warning tag if no commercial hits 70
     - Tier 3: Whole-Food Recipe Swap with YouTube search link
     """
-    # If the scanned product is already exceptionally clean (Score >= 85), do not force commercial alternatives
-    if scanned_health_score >= 85:
+    # If product is clean (>=85) and AI confirmed no cleaner alternative exists in market, declare top tier
+    if scanned_health_score >= 85 and not cleaner_exists_hint and not candidate_alternatives:
         return [
             HealthierAlternative(
                 name=f"{scanned_product_name} (Top Tier Choice)",
@@ -36,10 +37,10 @@ def apply_delta_audit_hierarchy(
                 warning_tag="",
                 is_direct_pdp=False,
                 pincode_available=True,
-                reason="🏆 This product already demonstrates peak nutritional integrity with clean ingredients and no harmful additives. It is among the best available products in the market.",
-                key_benefit="No cleaner commercial alternative is necessary.",
+                reason="🏆 Peak nutritional integrity verified. Zero harmful additives, pure whole-food formulation.",
+                key_benefit="Among the cleanest commercial options in this category.",
                 price_comparison="Current Product",
-                personalized_fit="Optimal whole-food alignment."
+                personalized_fit="Optimal clinical and whole-food alignment."
             )
         ]
 

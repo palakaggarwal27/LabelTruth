@@ -356,3 +356,53 @@ def test_delta_audit_hierarchy_brand_swap_ban():
     # Commercial candidate is blocked; fallbacks to YouTube whole-food recipe
     assert any(r.type == "HOMEMADE_RECIPE" for r in res)
     assert not any(r.name == "Amul Mozzarella Block" for r in res)
+
+def test_validate_acidity_condition():
+    """Verify acidity condition validates instantly with standardized clinical classification"""
+    response = client.post("/api/validate-condition", json={"condition": "acidity"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_valid"] is True
+    assert "Acidity" in data["standardized_name"] or "GERD" in data["standardized_name"]
+
+def test_profile_evaluator_acidity_deduction():
+    """Verify that acidity profile penalizes citric acid triggers with justifiable points"""
+    from app.services.profile_evaluator import evaluate_profile_safety_offline
+    from app.schemas.analysis import LabelAnalysisResult, IngredientItem
+    from app.schemas.user_profile import UserProfile
+
+    mock_product = LabelAnalysisResult(
+        product_name="Fizzy Cola Beverage",
+        health_score=50,
+        personalized_verdict="SAFE FOR YOU",
+        simple_summary="Carbonated drink with high acidity",
+        ingredient_breakdown=[
+            IngredientItem(ingredient="Carbonated Water", purpose="Base", concern_level="MEDIUM"),
+            IngredientItem(ingredient="Citric Acid (INS 330)", purpose="Acidity regulator", concern_level="MEDIUM")
+        ],
+        healthier_alternative={"name": "Fresh Lime Soda"}
+    )
+    profile = UserProfile(
+        medical_conditions=["Acidity / Acid Reflux (GERD)"]
+    )
+    eval_res = evaluate_profile_safety_offline(mock_product, profile)
+    assert len(eval_res["contraindications"]) > 0
+    assert any("acid" in c.lower() for c in eval_res["contraindications"])
+    assert eval_res["adjusted_health_score"] < mock_product.health_score
+
+def test_audit_cart_endpoint():
+    """Verify /api/audit-cart endpoint returns valid CartAuditResponse with metrics"""
+    response = client.post(
+        "/api/audit-cart",
+        data={
+            "cart_url": "https://www.zepto.com/cart/share-12345",
+            "pincode": "110001",
+            "user_profile": json.dumps({"medical_conditions": ["Acidity"]})
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "original_cart_score" in data
+    assert "swapped_cart_score" in data
+    assert "items" in data
+    assert len(data["items"]) > 0

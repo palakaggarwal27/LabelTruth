@@ -83,6 +83,7 @@ export interface LabelAnalysisResult {
   nutrient_integrity?: NutrientIntegrityMatrix;
   is_food_label?: boolean;
   label_type?: 'FRONT_OF_PACK' | 'BACK_OF_PACK' | 'FULL_PANEL' | 'NOT_A_LABEL';
+  cleaner_alternative_exists_in_market?: boolean;
 }
 
 export interface UserProfile {
@@ -146,4 +147,26 @@ export interface ScannedHistoryItem {
   timestamp: number;
   image_preview?: string;
   result: LabelAnalysisResult;
+}
+
+export interface CartItemAudit {
+  product_name: string;
+  quantity: number;
+  health_score: number;
+  personalized_verdict: string;
+  key_concerns: string[];
+  cleaner_alternative?: HealthierAlternative;
+}
+
+export interface CartAuditResponse {
+  store_name: string;
+  pincode: string;
+  original_cart_score: number;
+  swapped_cart_score: number;
+  score_improvement: number;
+  total_items: number;
+  clean_items_count: number;
+  red_flags_prevented_count: number;
+  summary: string;
+  items: CartItemAudit[];
 }

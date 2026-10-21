@@ -36,27 +36,35 @@ AUDIT CRITERIA:
    - Sugar Audit: Expose disguised sugars (maltodextrin, concentrated fruit juice, invert sugar).
    - Claims Matrix: Audit each front-of-pack claim and classify as "VERIFIED", "MISLEADING", or "DECEPTIVE".
 
-4. User Health Profile Personalization:
+4. User Health Profile Personalization & Severity-Based Penalties:
    User Profile: {user_profile_json}
-   - Flag specific contraindications for diabetes, celiac/gluten, vegan, jain, hypertension, allergies, and custom avoidance list.
+   - Dynamically evaluate every ingredient against the active profile's medical conditions, dietary preferences, allergies, and custom avoid list.
+   - Apply justifiable, clinically proportionate point deductions based on how severely the product violates their health profile:
+     * Severe Allergies & Autoimmune (Peanuts, Shellfish, Gluten in Celiac, Dairy): Set "personalized_verdict": "AVOID (VIOLATES PROFILE)", deduct -30 to -50 points, mark concern_level "HIGH", and warn: "Severe allergen detected — strictly avoid".
+     * Metabolic Conditions (Diabetes, Hypertension, Fatty Liver): Deduct -15 to -25 points for acute triggers (maltodextrin GI 110, added sugars >5g, sodium >400mg, MSG INS 621, trans fats).
+     * Digestive Sensitivities (Acidity, Acid Reflux, GERD, Gastritis, IBS): Deduct justifiable points (-8 to -18 points) for triggering ingredients (citric acid INS 330, carbonation, phosphoric acid, concentrated caffeine, artificial souring agents, excessive chili/capsaicin). State the clinical mechanism and flare-up risk in personalized_warning (e.g. "Contains Citric Acid (INS 330) which stimulates gastric acid secretion (~70% likelihood of acidity flare-up). -10 points deducted for acidity").
+     * Dietary Restrictions (Vegan, Jain): Deduct -25 to -30 points and set "AVOID (VIOLATES PROFILE)" if animal fats or root vegetables are present.
+     * Custom Avoid List: Deduct -15 to -25 points if item matches user's custom avoid list.
 
 5. Intelligent Holistic Health Scoring (0 to 100):
    - Evaluate the overall nutritional reality, ingredient purity, and metabolic impact of the product.
-   - Start from 100. Deduct points proportionally where the product is not superior or could be formulated cleaner:
-     * Heavy industrial processing, refined flours (maida), cheap frying fats (palm oil): moderate deduction (-10 to -20).
-     * High added sugar (>10g/100g) or chemical/carcinogenic additives (INS 150d, artificial dyes): moderate deduction (-8 to -15).
-     * Small minor additives (citric acid INS 330, soy lecithin, standard salt): keep deductions minimal and reasonable (-2 to -4 max). Do NOT harshly penalize small minor issues.
-     * Genuine whole foods, high fiber, high bioavailable protein: award bonuses (+5 to +10).
+   - Start from 100. Deduct points proportionally where the product is not superior or could be formulated cleaner.
+   - Deduct justifiable points if the product violates active health profile conditions as outlined in Section 4.
+   - Minor additives in healthy individuals (e.g., trace salt, small citric acid) warrant minimal deductions (-2 to -4), but if the user specifically has acidity/GERD, apply the condition-specific acidity deduction (-8 to -15) as specified above.
    - Set "health_score" in the range 0 to 100 reflecting this clinical consensus.
 
-6. Clean Indian Alternatives:
+6. Clean Indian Alternatives & Market Availability Assessment:
    - Provide 2-3 clean whole-food Indian alternative products accessible on quick-commerce (Blinkit, Zepto).
+   - "cleaner_alternative_exists_in_market" (boolean):
+     * If health_score >= 85 and the product is already pure, single-ingredient, or at the pinnacle of clean Indian market options (e.g., pure cold-pressed extra virgin mustard oil, 100% organic rolled oats with 0 additives, unadulterated raw honey), set "cleaner_alternative_exists_in_market": false.
+     * If an even cleaner, less processed, or 100% whole-food alternative is realistically available on Indian quick-commerce (e.g. Zepto/Blinkit), set "cleaner_alternative_exists_in_market": true.
 
 OUTPUT FORMAT:
 Return ONLY valid JSON matching this schema:
 {
   "is_food_label": true,
   "label_type": "FULL_PANEL",
+  "cleaner_alternative_exists_in_market": false,
   "product_name": "string",
   "health_score": 0,
   "personalized_verdict": "SAFE FOR YOU", // or "CAUTION" or "AVOID (VIOLATES PROFILE)"
