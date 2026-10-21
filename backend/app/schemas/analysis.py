@@ -9,10 +9,15 @@ class IngredientItem(BaseModel):
 
 class HealthierAlternative(BaseModel):
     name: str = Field(description='Recommended healthier brand or clean food alternative in India')
+    product_name: Optional[str] = Field(default=None, description='Alternative product name alias')
+    health_score: Optional[int] = Field(default=80, description='Audited health score (must be >= 70)')
     key_benefit: str = Field(description='Primary health advantage over current product')
     price_comparison: str = Field(description='Realistic price comparison context e.g., Comparable price or ~1.2x')
     personalized_fit: str = Field(description='Why this alternative fits user dietary and medical profile')
     store_url: Optional[str] = Field(default=None, description='Quick-commerce or brand store link')
+    direct_pdp_url: Optional[str] = Field(default=None, description='Direct Product Detail Page URL on Blinkit or Zepto')
+    pincode_available: bool = Field(default=True, description='Whether available at delivery pincode')
+    reason: Optional[str] = Field(default=None, description='Clinical reason for recommendation')
 
 class ProteinAudit(BaseModel):
     declared_protein_g: float = Field(default=0.0, description='Declared protein in grams per 100g or serving')

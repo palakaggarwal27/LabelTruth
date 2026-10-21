@@ -10,10 +10,15 @@ export interface IngredientItem {
 
 export interface HealthierAlternative {
   name: string;
+  product_name?: string;
+  health_score?: number;
   key_benefit: string;
   price_comparison: string;
   personalized_fit: string;
   store_url?: string;
+  direct_pdp_url?: string;
+  pincode_available?: boolean;
+  reason?: string;
 }
 
 export interface ProteinAudit {

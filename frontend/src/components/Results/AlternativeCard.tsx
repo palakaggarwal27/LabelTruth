@@ -45,15 +45,35 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, c
               className="p-5 bg-white border border-zinc-200 hover:border-zinc-400 rounded-md transition-all flex flex-col justify-between"
             >
               <div>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                  Clean Swap #{idx + 1}
-                </span>
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
+                    Clean Swap #{idx + 1}
+                  </span>
+                  {alt.health_score && (
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      Score: {alt.health_score}/100
+                    </span>
+                  )}
+                </div>
                 <h4 className="text-sm font-semibold text-zinc-900 mt-2">
-                  {alt.name}
+                  {alt.product_name || alt.name}
                 </h4>
                 <p className="text-xs text-zinc-600 mt-1 font-light leading-relaxed">
-                  {alt.key_benefit}
+                  {alt.reason || alt.key_benefit}
                 </p>
+                {alt.direct_pdp_url && (
+                  <div className="mt-2.5">
+                    <a
+                      href={alt.direct_pdp_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                    >
+                      <span>Direct Product Link (PDP)</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
                 <div className="mt-3 pt-3 border-t border-zinc-100 text-[11px] space-y-1">
                   <div className="text-zinc-500">
                     <span className="font-medium text-zinc-700">Price:</span> {alt.price_comparison}

@@ -11,7 +11,8 @@ interface FloatingChatbotProps {
 }
 
 export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductContext }) => {
-  const { profile } = useHealthProfile();
+  const { activeProfile, profile } = useHealthProfile();
+  const currentProfile = activeProfile || profile;
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,28 +20,27 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
     {
       role: 'assistant',
       content: activeProductContext
-        ? `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). What would you like to know about its ingredients or health impact?`
-        : 'Clinical food intelligence active. You can ask me follow-up questions about this product, your medical conditions, or FSSAI regulatory compliance.',
+        ? `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). Evaluating for: ${currentProfile.name || 'Active Profile'}. What would you like to know about its ingredients or health impact?`
+        : `Clinical food intelligence active. Evaluating for: ${currentProfile.name || 'Family Member'}. You can ask me follow-up questions about this product, your medical conditions, or FSSAI regulatory compliance.`,
     },
   ]);
 
-  // Update greeting when active scanned product changes
+  // Update greeting when active scanned product or profile changes
   React.useEffect(() => {
     if (activeProductContext) {
       setMessages((prev) => {
-        // If user hasn't chatted yet or only has greeting, update to product-specific greeting
         if (prev.length <= 1) {
           return [
             {
               role: 'assistant',
-              content: `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). What would you like to know about its ingredients or health impact?`,
+              content: `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). Evaluating for: ${currentProfile.name || 'Active Profile'}. What would you like to know about its ingredients or health impact?`,
             },
           ];
         }
         return prev;
       });
     }
-  }, [activeProductContext]);
+  }, [activeProductContext, currentProfile.name]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +53,7 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
     setLoading(true);
 
     try {
-      const reply = await sendChatMessage(userText, messages, profile, activeProductContext);
+      const reply = await sendChatMessage(userText, messages, currentProfile, activeProductContext);
       setMessages([...newHistory, { role: 'assistant', content: reply }]);
     } catch (err) {
       console.error('Chat error:', err);
@@ -93,8 +93,11 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
                 <Bot className="w-3.5 h-3.5 text-zinc-700" />
                 <span>LabelTruth AI Assistant</span>
               </div>
-              <div className="text-[10px] text-zinc-500 font-mono">
-                {activeProductContext ? `Auditing: ${activeProductContext.product_name}` : 'Personalized health consultation'}
+              <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-1 mt-0.5">
+                <span className="font-medium text-emerald-800 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
+                  {currentProfile.name || 'Member'}
+                </span>
+                <span>• {activeProductContext ? activeProductContext.product_name : 'General Advisory'}</span>
               </div>
             </div>
             <button

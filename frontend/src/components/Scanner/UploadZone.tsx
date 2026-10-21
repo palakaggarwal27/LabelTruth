@@ -6,7 +6,7 @@ import { UploadCloud, Camera } from 'lucide-react';
 interface UploadZoneProps {
   onFileSelect: (file: File) => void;
   onOpenLiveCamera: () => void;
-  onTextSubmit?: (query: string) => void;
+  onTextSubmit?: (query: string, pincode?: string) => void;
   loading: boolean;
 }
 
@@ -37,10 +37,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
     }
   };
 
+  const [pincode, setPincode] = useState('110001');
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (textQuery.trim() && onTextSubmit) {
-      onTextSubmit(textQuery.trim());
+      onTextSubmit(textQuery.trim(), pincode.trim() || '110001');
     }
   };
 
@@ -49,16 +51,30 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
       {/* Product Name / Quick-Commerce Link Search Box */}
       {onTextSubmit && (
         <form onSubmit={handleSearchSubmit} className="p-4 bg-zinc-50 border border-zinc-200 rounded-md">
-          <label className="text-xs font-semibold text-zinc-900 block mb-1">
-            Search by Product Name or Quick-Commerce Link
-          </label>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
+            <label className="text-xs font-semibold text-zinc-900 block">
+              Search by Product Name or Quick-Commerce Link
+            </label>
+            <div className="flex items-center gap-1.5 text-xs text-zinc-600">
+              <span className="text-[11px] font-mono">Delivery PIN:</span>
+              <input
+                type="text"
+                maxLength={6}
+                value={pincode}
+                onChange={(e) => setPincode(e.target.value)}
+                placeholder="110001"
+                className="w-20 px-2 py-0.5 text-xs font-mono border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
+                title="Pincode for live Zepto/Blinkit availability check"
+              />
+            </div>
+          </div>
           <p className="text-[11px] text-zinc-500 mb-2">
-            No photo? Enter the product name (e.g. &quot;Bournvita Little Champs&quot;) or paste a Blinkit / Zepto URL to auto-fetch ingredients and nutrition via TinyFish AI.
+            No photo? Enter product name or paste Blinkit / Zepto URL to auto-fetch ingredients and verify clean swaps available at your pincode.
           </p>
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="e.g. Maggi Atta Noodles, Epigamia Greek Yogurt, or paste quick-commerce link"
+              placeholder="e.g. Bournvita, Maggi Atta Noodles, Epigamia Greek Yogurt, or paste link"
               value={textQuery}
               onChange={(e) => setTextQuery(e.target.value)}
               disabled={loading}

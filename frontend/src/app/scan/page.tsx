@@ -101,7 +101,7 @@ export default function ScanPage() {
     }
   };
 
-  const handleProcessQuery = async (queryText: string) => {
+  const handleProcessQuery = async (queryText: string, pincode?: string) => {
     setLoading(true);
     setError(null);
     const normalized = queryText.trim().toLowerCase();
@@ -117,7 +117,7 @@ export default function ScanPage() {
     }
 
     try {
-      const data = await smartScan({ query: queryText }, profile);
+      const data = await smartScan({ query: queryText, pincode: pincode || '110001' }, profile);
       setResult(data);
       saveToHistory(data);
     } catch (err: unknown) {

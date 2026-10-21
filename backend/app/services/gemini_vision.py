@@ -173,6 +173,20 @@ class GeminiVisionService:
             if parsed.get("healthier_alternative") and not parsed.get("clean_alternatives"):
                 parsed["clean_alternatives"] = [parsed["healthier_alternative"]]
 
+            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+            try:
+                from app.services.scoring_engine import compute_piecewise_health_score
+                score_data = compute_piecewise_health_score(
+                    nutrition=parsed.get("nutrition_card"),
+                    ingredients=parsed.get("ingredient_breakdown", []),
+                    integrity=parsed.get("nutrient_integrity"),
+                    deceptive_claims=parsed.get("deceptive_claims_flagged", []),
+                    product_name=parsed.get("product_name", "")
+                )
+                parsed["health_score"] = score_data["final_health_score"]
+            except Exception as score_err:
+                logger.warning(f"Error computing piecewise health score: {score_err}")
+
             return LabelAnalysisResult(**parsed)
         except Exception as e:
             logger.error(f"Gemini Vision API error: {e}")
@@ -204,6 +218,20 @@ class GeminiVisionService:
             if clean_text.endswith("```"):
                 clean_text = clean_text[:-3]
             parsed = json.loads(clean_text.strip())
+            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+            try:
+                from app.services.scoring_engine import compute_piecewise_health_score
+                score_data = compute_piecewise_health_score(
+                    nutrition=parsed.get("nutrition_card"),
+                    ingredients=parsed.get("ingredient_breakdown", []),
+                    integrity=parsed.get("nutrient_integrity"),
+                    deceptive_claims=parsed.get("deceptive_claims_flagged", []),
+                    product_name=parsed.get("product_name", "")
+                )
+                parsed["health_score"] = score_data["final_health_score"]
+            except Exception as score_err:
+                logger.warning(f"Error computing piecewise health score for text query: {score_err}")
+
             return LabelAnalysisResult(**parsed)
         except Exception as e:
             logger.error(f"Gemini Text Query API error: {e}")

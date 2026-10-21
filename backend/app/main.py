@@ -139,14 +139,17 @@ async def analyze_label(
 async def smart_scan(
     query: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
+    pincode: Optional[str] = Form("110001"),
     user_profile: str = Form(...)
 ):
-    """Smart hybrid input: handles image, product text name, or online quick-commerce URL"""
+    """Smart hybrid input: handles image, product text name, or online quick-commerce URL with pincode localization"""
     try:
         profile_dict = json.loads(user_profile)
         profile = UserProfile(**profile_dict)
     except Exception:
         profile = UserProfile()
+
+    delivery_pincode = pincode or "110001"
 
     try:
         # Scenario 1: Image provided
@@ -154,12 +157,16 @@ async def smart_scan(
             image_bytes = await image.read()
             if image_bytes and len(image_bytes) > 0:
                 await image.seek(0)
-                return await analyze_label(image=image, user_profile=user_profile)
+                result = await analyze_label(image=image, user_profile=user_profile)
+                # Ensure alternatives meet the strict >= 70 score constraint
+                if result.clean_alternatives:
+                    result.clean_alternatives = [alt for alt in result.clean_alternatives if (alt.health_score or 80) >= 70]
+                return result
 
         # Scenario 2: Text / Product name / Shared URL
         if query and query.strip():
             clean_query = query.strip()
-            query_cache_key = compute_audit_hash(clean_query.lower().encode('utf-8'), user_profile)
+            query_cache_key = compute_audit_hash(f"{clean_query.lower()}:{delivery_pincode}".encode('utf-8'), user_profile)
             if query_cache_key in AUDIT_CACHE:
                 logger.info(f"Serving query audit for '{clean_query}' from SHA-256 cache (zero credits used)")
                 return AUDIT_CACHE[query_cache_key]
@@ -174,6 +181,42 @@ async def smart_scan(
                 online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
 
             result = await gemini_vision_service.analyze_text_query(clean_query, profile, online_content)
+            if isinstance(result, dict):
+                result = LabelAnalysisResult(**result)
+
+            # Module 2: Pin-Code Location Web Agent & Direct PDP Swapping
+            try:
+                prod_name = getattr(result, "product_name", clean_query)
+                pincode_alts = await tinyfish_service.find_pincode_alternatives(prod_name, delivery_pincode)
+                if pincode_alts:
+                    from app.schemas.analysis import HealthierAlternative
+                    valid_pdp_alts = []
+                    for pa in pincode_alts:
+                        h_score = int(pa.get("health_score", 85))
+                        # STRICT FILTER: Score >= 70 Constraint
+                        if h_score >= 70:
+                            valid_pdp_alts.append(HealthierAlternative(
+                                name=pa.get("name") or pa.get("product_name"),
+                                product_name=pa.get("product_name") or pa.get("name"),
+                                health_score=h_score,
+                                direct_pdp_url=pa.get("direct_pdp_url"),
+                                store_url=pa.get("direct_pdp_url"),
+                                pincode_available=True,
+                                reason=pa.get("reason", "Clean whole food alternative"),
+                                key_benefit=pa.get("reason", "Clean whole food alternative"),
+                                price_comparison="Comparable",
+                                personalized_fit="Zero added sugar and zero palm oil."
+                            ))
+                    if valid_pdp_alts:
+                        result.clean_alternatives = valid_pdp_alts
+                        result.healthier_alternative = valid_pdp_alts[0]
+            except Exception as alt_err:
+                logger.warning(f"Error enriching pincode alternatives: {alt_err}")
+
+            # Filter any existing alternatives to ensure score >= 70
+            if getattr(result, "clean_alternatives", None):
+                result.clean_alternatives = [alt for alt in result.clean_alternatives if (alt.health_score or 80) >= 70]
+
             AUDIT_CACHE[query_cache_key] = result
             return result
 

@@ -43,7 +43,7 @@ export const analyzeLabel = async (
 };
 
 export const smartScan = async (
-  input: { query?: string; imageFile?: Blob | File },
+  input: { query?: string; imageFile?: Blob | File; pincode?: string },
   userProfile: UserProfile
 ): Promise<LabelAnalysisResult> => {
   const formData = new FormData();
@@ -54,6 +54,7 @@ export const smartScan = async (
   if (input.query) {
     formData.append('query', input.query);
   }
+  formData.append('pincode', input.pincode || '110001');
   formData.append('user_profile', JSON.stringify(userProfile));
 
   try {

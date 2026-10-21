@@ -58,6 +58,32 @@ const MODULES = [
     diseaseRisks: ['Celiac Disease / Gluten Sensitivity', 'Carcinogen Exposure', 'Sulfite Allergies'],
   },
   {
+    id: 'msg-enhancers',
+    icon: AlertTriangle,
+    title: 'INS 621 (MSG) & Flavour Enhancers (627 / 631)',
+    summary: 'Synthetic umami boosters used to mask poor quality ingredients and drive compulsive snacking.',
+    fssaiCitation: 'FSSAI Food Additives Regulations (Table 3: Flavour Enhancers)',
+    details: [
+      'Monosodium Glutamate (INS 621) and ribonucleotides (INS 627, INS 631) trigger neurotransmitter excitotoxicity and hyper-palatability, bypassing natural fullness cues.',
+      'Under FSSAI rules, products with added MSG must declare "Contains Added MSG" on the label, but brands frequently hide it under "Natural Yeast Extract" or "Hydrolyzed Vegetable Protein (HVP)".',
+    ],
+    exploitedLoophole: 'Advertising "No Added MSG" while dumping 2% Hydrolyzed Soy Protein or Autolyzed Yeast, which naturally contains 20% free glutamates.',
+    diseaseRisks: ['Hypertension (High BP)', 'Migraines', 'Excitotoxicity', 'High Sodium Retention'],
+  },
+  {
+    id: 'synthetic-fiber',
+    icon: EyeOff,
+    title: 'Synthetic Fiber Padding: Polydextrose & Inulin',
+    summary: 'Industrial synthetic fiber powders used to fabricate high-fiber claims without actual whole grains.',
+    fssaiCitation: 'FSSAI Functional Foods and Fiber Labelling Guidelines',
+    details: [
+      'Real dietary fiber comes bound with vitamins, minerals, and polyphenols in whole oats, millets, and whole wheat.',
+      'Ultra-processed products dump cheap synthetic isolated fibers (Polydextrose, Corn Dextrin, Chicory Root Inulin) to claim "High Fiber" on white maida cookies.',
+    ],
+    exploitedLoophole: 'Claiming "6g Fiber per serving" on cookies composed of 50% white maida and palm oil by adding 3g of industrial Polydextrose powder.',
+    diseaseRisks: ['IBS & Bloating', 'Digestive Distress', 'Microbiome Dysbiosis'],
+  },
+  {
     id: 'double-standards',
     icon: Globe2,
     title: 'The Nutritional Divide & Double Standards',

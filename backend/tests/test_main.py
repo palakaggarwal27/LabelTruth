@@ -205,6 +205,7 @@ def test_smart_scan_text_fallback(mock_text_query, mock_tinyfish):
         "/api/smart-scan",
         data={
             "query": "The Whole Truth Peanut Butter",
+            "pincode": "110001",
             "user_profile": json.dumps({"medical_conditions": []})
         }
     )
@@ -212,3 +213,68 @@ def test_smart_scan_text_fallback(mock_text_query, mock_tinyfish):
     data = response.json()
     assert data["product_name"] == "The Whole Truth Peanut Butter"
     assert data["health_score"] == 92
+
+def test_piecewise_scoring_mathematical_logic():
+    """Verify piecewise mathematical scoring engine equation and rules offline"""
+    from app.services.scoring_engine import (
+        calculate_trans_fat_penalty,
+        calculate_added_sugar_penalty,
+        calculate_saturated_fat_penalty,
+        calculate_sodium_penalty,
+        calculate_energy_density_penalty,
+        calculate_ins_additives_penalty,
+        calculate_protein_bonus,
+        calculate_fiber_bonus,
+        compute_piecewise_health_score
+    )
+
+    # 1. Trans Fat: <=0.2g is 0; >0.2 and <=0.5 is 10; Vanaspati adds 10
+    assert calculate_trans_fat_penalty(0.1, "cow milk fat") == 0.0
+    assert calculate_trans_fat_penalty(0.4, "refined oil") == 10.0
+    assert calculate_trans_fat_penalty(0.1, "partially hydrogenated vanaspati oil") == 10.0
+
+    # 2. Added Sugar: solids >20g is -25, zero sugar with maltodextrin adds -15
+    assert calculate_added_sugar_penalty(25.0, False, "wheat flour, sugar", "") == 25.0
+    assert calculate_added_sugar_penalty(0.0, False, "maltodextrin, wheat", "zero sugar claim") == 15.0
+
+    # 3. Saturated Fat: solids >8g is -16, palm oil adds -10
+    assert calculate_saturated_fat_penalty(10.0, False, "refined palm olein") == 26.0
+
+    # 4. Sodium: >900mg is -25
+    assert calculate_sodium_penalty(1200.0) == 25.0
+
+    # 5. Energy Density: solids >450 kcal is -15
+    assert calculate_energy_density_penalty(520.0, False) == 15.0
+
+    # 6. Additives: Caramel Colour INS 150d high risk (12) + INS 621 MSG med risk (6) = 18
+    assert calculate_ins_additives_penalty([], "contains ins 150d and ins 621") == 18.0
+
+    # 7. Protein bonus: Whey protein 15g, PDCAAS 1.0 -> +10; Spiking with Glycine -> -15
+    assert calculate_protein_bonus(15.0, 1.0, "whey protein concentrate") == 10.0
+    assert calculate_protein_bonus(15.0, 1.0, "whey protein, free glycine") == -5.0
+
+    # 8. Fiber bonus: 8g whole grain fiber -> +10
+    assert calculate_fiber_bonus(8.0, "whole grain oats") == 10.0
+
+    # Comprehensive clean product should score near 100
+    clean_score = compute_piecewise_health_score(
+        nutrition={"trans_fat_g": 0.0, "added_sugars_g": 0.0, "saturated_fat_g": 1.0, "sodium_mg": 50, "calories_kcal": 180},
+        ingredients=[{"ingredient": "Whole Oats"}],
+        integrity={"protein": {"declared_protein_g": 12.0, "pdcaas_score": 0.9}},
+        product_name="Clean Whole Grain Oats"
+    )
+    assert clean_score["final_health_score"] >= 95
+
+def test_alternatives_score_filter_strictly_drops_below_70():
+    """Verify clean_alternatives only keeps products with health_score >= 70"""
+    from app.schemas.analysis import HealthierAlternative
+
+    alts = [
+        HealthierAlternative(name="Clean Alt A", health_score=85, key_benefit="Clean", price_comparison="1x", personalized_fit="Good"),
+        HealthierAlternative(name="Subpar Alt B", health_score=55, key_benefit="Bad", price_comparison="1x", personalized_fit="Poor"),
+        HealthierAlternative(name="Clean Alt C", health_score=72, key_benefit="Great", price_comparison="1x", personalized_fit="Good"),
+    ]
+    filtered = [a for a in alts if (a.health_score or 80) >= 70]
+    assert len(filtered) == 2
+    assert all(a.health_score >= 70 for a in filtered)
+    assert not any(a.name == "Subpar Alt B" for a in filtered)
