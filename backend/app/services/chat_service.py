@@ -3,7 +3,7 @@ import logging
 from typing import Optional, List
 from google import genai
 
-from app.config import GEMINI_API_KEY
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
 from app.schemas.chat import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -113,14 +113,36 @@ class ChatService:
             full_prompt += f"{msg.role.upper()}: {msg.content}\n"
         full_prompt += f"USER: {message}\nASSISTANT:"
 
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-3.1-flash-lite",
-                contents=full_prompt
-            )
-            return response.text.strip()
-        except Exception as e:
-            logger.error(f"Chat generation error: {e}")
-            return "Unable to consult the clinical AI model at this moment. Please check your product label breakdown directly."
+        ACTIVE_MODELS = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
+
+        clients_to_try = [self.client] if self.client else []
+        for extra_key in GEMINI_API_KEYS:
+            if self.client and extra_key == GEMINI_API_KEY:
+                continue
+            try:
+                clients_to_try.append(genai.Client(api_key=extra_key))
+            except Exception:
+                pass
+
+        for cl in (clients_to_try or [self.client]):
+            for model_name in ACTIVE_MODELS:
+                try:
+                    response = cl.models.generate_content(
+                        model=model_name,
+                        contents=full_prompt
+                    )
+                    if response and response.text:
+                        return response.text.strip()
+                except Exception as e:
+                    logger.warning(f"Chat model {model_name} failed: {e}")
+                    continue
+
+        return "Unable to consult the clinical AI model at this moment. Please check your product label breakdown directly."
 
 chat_service = ChatService()

@@ -40,8 +40,16 @@ AUDIT CRITERIA:
    User Profile: {user_profile_json}
    - Flag specific contraindications for diabetes, celiac/gluten, vegan, jain, hypertension, allergies, and custom avoidance list.
 
-5. Scoring & Clean Indian Alternatives:
-   - health_score: 0 to 100.
+5. Intelligent Holistic Health Scoring (0 to 100):
+   - Evaluate the overall nutritional reality, ingredient purity, and metabolic impact of the product.
+   - Start from 100. Deduct points proportionally where the product is not superior or could be formulated cleaner:
+     * Heavy industrial processing, refined flours (maida), cheap frying fats (palm oil): moderate deduction (-10 to -20).
+     * High added sugar (>10g/100g) or chemical/carcinogenic additives (INS 150d, artificial dyes): moderate deduction (-8 to -15).
+     * Small minor additives (citric acid INS 330, soy lecithin, standard salt): keep deductions minimal and reasonable (-2 to -4 max). Do NOT harshly penalize small minor issues.
+     * Genuine whole foods, high fiber, high bioavailable protein: award bonuses (+5 to +10).
+   - Set "health_score" in the range 0 to 100 reflecting this clinical consensus.
+
+6. Clean Indian Alternatives:
    - Provide 2-3 clean whole-food Indian alternative products accessible on quick-commerce (Blinkit, Zepto).
 
 OUTPUT FORMAT:
@@ -248,7 +256,7 @@ class GeminiVisionService:
                     if "palm" not in str(item.get("ingredient", "")).lower()
                 ]
 
-        # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+        # Blend AI holistic assessment with mathematical reference engine
         try:
             from app.services.scoring_engine import compute_piecewise_health_score
             score_data = compute_piecewise_health_score(
@@ -258,7 +266,16 @@ class GeminiVisionService:
                 deceptive_claims=parsed.get("deceptive_claims_flagged", []),
                 product_name=parsed.get("product_name", "")
             )
-            parsed["health_score"] = score_data["final_health_score"]
+            math_ref_score = score_data["final_health_score"]
+            ai_score = int(parsed.get("health_score", 0))
+
+            if ai_score > 0:
+                # Use AI score as primary clinical judgement with mathematical reference as anchor
+                # Gives 60% weight to AI holistic nuance and 40% to mathematical baseline
+                blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
+                parsed["health_score"] = max(5, min(100, blended_score))
+            else:
+                parsed["health_score"] = math_ref_score
         except Exception as score_err:
             logger.warning(f"Error computing piecewise health score: {score_err}")
 
@@ -323,7 +340,7 @@ class GeminiVisionService:
                 break
 
         if parsed:
-            # Apply Piecewise Mathematical Scoring Engine (FSSAI 2020/2023, ICMR-NIN 2024, WHO SEARO)
+            # Blend AI holistic assessment with mathematical reference engine
             try:
                 from app.services.scoring_engine import compute_piecewise_health_score
                 score_data = compute_piecewise_health_score(
@@ -333,7 +350,14 @@ class GeminiVisionService:
                     deceptive_claims=parsed.get("deceptive_claims_flagged", []),
                     product_name=parsed.get("product_name", "")
                 )
-                parsed["health_score"] = score_data["final_health_score"]
+                math_ref_score = score_data["final_health_score"]
+                ai_score = int(parsed.get("health_score", 0))
+
+                if ai_score > 0:
+                    blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
+                    parsed["health_score"] = max(5, min(100, blended_score))
+                else:
+                    parsed["health_score"] = math_ref_score
             except Exception as score_err:
                 logger.warning(f"Error computing piecewise health score for text query: {score_err}")
 

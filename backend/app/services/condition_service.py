@@ -4,7 +4,7 @@ from typing import Optional
 from google import genai
 from google.genai import types
 
-from app.config import GEMINI_API_KEY
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
 from app.schemas.condition import ValidateConditionResponse
 
 logger = logging.getLogger(__name__)
@@ -80,26 +80,47 @@ class ConditionValidationService:
             if key in cleaned or cleaned in key:
                 return ValidateConditionResponse(is_valid=valid, standardized_name=std_name, reason=reason)
 
-        # If Gemini client is active, query Gemini Flash with strict JSON schema
-        if self.client:
+        # If client is active, query active Gemini models with strict JSON schema
+        ACTIVE_MODELS = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
+
+        clients_to_try = [self.client] if self.client else []
+        for extra_key in GEMINI_API_KEYS:
+            if self.client and extra_key == GEMINI_API_KEY:
+                continue
             try:
-                prompt = f"{VALIDATION_SYSTEM_PROMPT}\n\nTerm to verify: {query.strip()}"
-                response = self.client.models.generate_content(
-                    model="gemini-3.1-flash-lite",
-                    contents=prompt,
-                    config=types.GenerateContentConfig(response_mime_type="application/json")
-                )
-                clean_text = response.text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                if clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                if clean_text.endswith("```"):
-                    clean_text = clean_text[:-3]
-                parsed = json.loads(clean_text.strip())
-                return ValidateConditionResponse(**parsed)
-            except Exception as e:
-                logger.error(f"Gemini condition validation error: {e}")
+                clients_to_try.append(genai.Client(api_key=extra_key))
+            except Exception:
+                pass
+
+        prompt = f"{VALIDATION_SYSTEM_PROMPT}\n\nTerm to verify: {query.strip()}"
+        for cl in (clients_to_try or [self.client]):
+            if not cl:
+                continue
+            for model_name in ACTIVE_MODELS:
+                try:
+                    response = cl.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(response_mime_type="application/json")
+                    )
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    parsed = json.loads(clean_text.strip())
+                    return ValidateConditionResponse(**parsed)
+                except Exception as e:
+                    logger.warning(f"Condition validation model {model_name} failed: {e}")
+                    continue
 
         # If not in KNOWN_STANDARDS and Gemini validation could not confirm or rejected
         return ValidateConditionResponse(

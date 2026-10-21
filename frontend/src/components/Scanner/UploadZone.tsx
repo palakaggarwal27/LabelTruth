@@ -5,12 +5,13 @@ import { UploadCloud, Camera } from 'lucide-react';
 
 interface UploadZoneProps {
   onFileSelect: (file: File) => void;
-  onOpenLiveCamera: () => void;
+  onOpenLiveCamera?: () => void;
   onTextSubmit?: (query: string, pincode?: string) => void;
   loading: boolean;
+  compact?: boolean;
 }
 
-export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLiveCamera, onTextSubmit, loading }) => {
+export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLiveCamera, onTextSubmit, loading, compact }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [textQuery, setTextQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +40,18 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
 
   const [pincode, setPincode] = useState('110001');
   const [detectingLoc, setDetectingLoc] = useState(false);
+
+  // Automatically detect user location and pincode on mount without requiring manual click
+  React.useEffect(() => {
+    // Check if previously detected and cached in session
+    const cachedPin = sessionStorage.getItem('labeltruth_user_pincode');
+    if (cachedPin && /^\d{6}$/.test(cachedPin)) {
+      setPincode(cachedPin);
+      return;
+    }
+    handleDetectLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDetectLocation = () => {
     setDetectingLoc(true);
@@ -183,7 +196,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
         onDragOver={handleDrag}
         onDragLeave={handleDrag}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-md p-8 sm:p-10 text-center transition-colors ${
+        className={`border-2 border-dashed rounded-md ${compact ? 'p-4 sm:p-5' : 'p-8 sm:p-10'} text-center transition-colors ${
           isDragOver
             ? 'border-zinc-900 bg-zinc-100'
             : 'border-zinc-200 bg-zinc-50/50 hover:bg-zinc-100/50'

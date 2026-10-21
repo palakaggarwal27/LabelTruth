@@ -1,5 +1,7 @@
 "use client";
 
+import { CompareProducts } from '@/components/CompareProducts';
+
 import React, { useState } from 'react';
 import { UploadZone } from '@/components/Scanner/UploadZone';
 import { CameraCapture } from '@/components/Scanner/CameraCapture';
@@ -11,7 +13,7 @@ import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan } from '@/lib/api';
 import { LabelAnalysisResult, ScannedHistoryItem } from '@/types';
-import { AlertCircle, RefreshCw, ScanLine, History, Trash2 } from 'lucide-react';
+import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
 import { HealthProfileManager } from '@/components/HealthProfileManager';
 import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
@@ -26,7 +28,7 @@ const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 export default function ScanPage() {
   const { profile, activeProfile } = useHealthProfile();
   const currentProfile = activeProfile || profile;
-  const [activeTab, setActiveTab] = useState<'scan' | 'history'>('scan');
+  const [activeTab, setActiveTab] = useState<'scan' | 'compare' | 'history'>('scan');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -298,6 +300,18 @@ export default function ScanPage() {
         </button>
 
         <button
+          onClick={() => setActiveTab('compare')}
+          className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
+            activeTab === 'compare'
+              ? 'border-zinc-900 text-zinc-900'
+              : 'border-transparent text-zinc-500 hover:text-zinc-800'
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          <span>Compare Products</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('history')}
           className={`pb-3 px-3 text-xs font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'history'
@@ -331,7 +345,9 @@ export default function ScanPage() {
         )}
       </div>
 
-      {activeTab === 'history' ? (
+      {activeTab === 'compare' ? (
+        <CompareProducts />
+      ) : activeTab === 'history' ? (
         <ScanHistoryList
           history={history}
           onSelect={handleSelectHistoryItem}
