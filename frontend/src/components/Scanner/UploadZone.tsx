@@ -69,27 +69,33 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
         try {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          // Free, high-reliability CORS-enabled reverse geocoding
+
+          // Query OpenStreetMap with full address details
+          const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`);
+          if (osmRes.ok) {
+            const osmData = await osmRes.json();
+            const addr = osmData?.address || {};
+            const pinCandidate = addr.postcode || addr.postal_code || '';
+            const match = pinCandidate.match(/\b([1-9][0-9]{5})\b/);
+            if (match) {
+              setPincode(match[1]);
+              return;
+            }
+          }
+
+          // Fallback to bigdatacloud client
           const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
           if (res.ok) {
             const data = await res.json();
             const pin = data?.postcode || data?.postCode;
-            if (pin && /^\d{6}$/.test(pin.replace(/\s+/g, ''))) {
-              setPincode(pin.replace(/\s+/g, ''));
+            const match = String(pin || '').match(/\b([1-9][0-9]{5})\b/);
+            if (match) {
+              setPincode(match[1]);
               return;
             }
           }
-          // Secondary fallback to openstreetmap
-          const osmRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
-            headers: { 'Accept': 'application/json' }
-          });
-          const osmData = await osmRes.json();
-          const detectedPin = osmData?.address?.postcode || '';
-          if (detectedPin) {
-            setPincode(detectedPin.replace(/\s+/g, ''));
-          } else {
-            await tryIpFallback();
-          }
+
+          await tryIpFallback();
         } catch {
           await tryIpFallback();
         } finally {
@@ -98,11 +104,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
       },
       async (err) => {
         console.warn("Browser GPS permission denied or timeout:", err);
-        // Seamless fallback to IP location without prompting permissions
         await tryIpFallback();
         setDetectingLoc(false);
       },
-      { timeout: 7000, enableHighAccuracy: true }
+      { timeout: 10000, enableHighAccuracy: true, maximumAge: 0 }
     );
   };
 

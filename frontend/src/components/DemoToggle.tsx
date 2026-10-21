@@ -42,7 +42,6 @@ export const DemoToggle: React.FC<DemoToggleProps> = ({ demoMode, onToggle, onSe
 
       {demoMode && onSelectTier && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-mono text-zinc-500">5 Tiers:</span>
           {tiers.map((t) => (
             <button
               key={t.id}

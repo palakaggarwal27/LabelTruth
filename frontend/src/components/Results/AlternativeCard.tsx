@@ -117,30 +117,32 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, c
                 </div>
               </div>
 
-              {/* Multi-Store Buttons */}
-              <div className="mt-4 pt-3 border-t border-zinc-100">
-                <span className="text-[10px] uppercase font-mono text-zinc-500 block mb-1.5">
-                  Check Quick-Commerce Availability:
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {storeOptions.map((store) => (
-                    <a
-                      key={store.name}
-                      href={store.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-1.5 px-2 bg-zinc-50 hover:bg-zinc-900 hover:text-white border border-zinc-200 rounded text-[11px] font-medium flex items-center justify-between text-zinc-800 transition-colors"
-                      title={`Search on ${store.name}`}
-                    >
-                      <span className="truncate">{store.name}</span>
-                      <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-1 shrink-0" />
-                    </a>
-                  ))}
+              {/* Multi-Store Buttons: Render only for commercial packaged alternatives, NOT for homemade recipes */}
+              {alt.type !== 'HOMEMADE_RECIPE' && (
+                <div className="mt-4 pt-3 border-t border-zinc-100">
+                  <span className="text-[10px] uppercase font-mono text-zinc-500 block mb-1.5">
+                    Check Quick-Commerce Availability:
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {storeOptions.map((store) => (
+                      <a
+                        key={store.name}
+                        href={store.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-1.5 px-2 bg-zinc-50 hover:bg-zinc-900 hover:text-white border border-zinc-200 rounded text-[11px] font-medium flex items-center justify-between text-zinc-800 transition-colors"
+                        title={`Search on ${store.name}`}
+                      >
+                        <span className="truncate">{store.name}</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-60 ml-1 shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-[10px] text-zinc-400 font-light text-center">
+                    {userCity ? `Availability verified for ${userCity}` : 'Tap store to check live delivery in your pincode'}
+                  </div>
                 </div>
-                <div className="mt-2 text-[10px] text-zinc-400 font-light text-center">
-                  {userCity ? `Availability verified for ${userCity}` : 'Tap store to check live delivery in your pincode'}
-                </div>
-              </div>
+              )}
             </div>
           );
         })}

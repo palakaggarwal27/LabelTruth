@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { UploadZone } from '@/components/Scanner/UploadZone';
 import { CameraCapture } from '@/components/Scanner/CameraCapture';
-import { PresetBar } from '@/components/Scanner/PresetBar';
 import { ScoreCard } from '@/components/Results/ScoreCard';
 import { RedFlagsCard } from '@/components/Results/RedFlagsCard';
 import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
@@ -11,7 +10,7 @@ import { AlternativeCard } from '@/components/Results/AlternativeCard';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan } from '@/lib/api';
-import { LabelAnalysisResult, PresetProduct, ScannedHistoryItem } from '@/types';
+import { LabelAnalysisResult, ScannedHistoryItem } from '@/types';
 import { AlertCircle, RefreshCw, ScanLine, History, Trash2 } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
 import { HealthProfileManager } from '@/components/HealthProfileManager';
@@ -238,12 +237,6 @@ export default function ScanPage() {
     }
   };
 
-  const handleSelectPreset = (preset: PresetProduct) => {
-    setResult(preset.sample_result);
-    setError(null);
-    saveToHistory(preset.sample_result);
-  };
-
   const handleSelectHistoryItem = (item: ScannedHistoryItem) => {
     setResult(item.result);
     setActiveTab('scan');
@@ -379,10 +372,6 @@ export default function ScanPage() {
             </div>
           )}
 
-          {/* Preset Demo Bar (only shown in Demo Mode) */}
-          {demoMode && (
-            <PresetBar onSelectPreset={handleSelectPreset} loading={loading} />
-          )}
         </div>
       ) : (
         <div className="space-y-6">
