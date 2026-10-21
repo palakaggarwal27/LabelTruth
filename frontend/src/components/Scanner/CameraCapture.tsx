@@ -42,12 +42,30 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
 
   const handleSnap = () => {
     if (!videoRef.current) return;
+    const v = videoRef.current;
+    const origW = v.videoWidth || 640;
+    const origH = v.videoHeight || 480;
+
+    // Constrain max dimension to 1024 for high-speed upload and analysis without sacrificing OCR legibility
+    const maxDim = 1024;
+    let targetW = origW;
+    let targetH = origH;
+    if (origW > maxDim || origH > maxDim) {
+      if (origW > origH) {
+        targetW = maxDim;
+        targetH = Math.round((origH * maxDim) / origW);
+      } else {
+        targetH = maxDim;
+        targetW = Math.round((origW * maxDim) / origH);
+      }
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = targetW;
+    canvas.height = targetH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(v, 0, 0, targetW, targetH);
     canvas.toBlob(
       (blob) => {
         if (blob) {
@@ -56,7 +74,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onCance
         }
       },
       'image/jpeg',
-      0.92
+      0.82
     );
   };
 

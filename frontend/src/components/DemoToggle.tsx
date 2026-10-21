@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from 'react';
 import { ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
@@ -11,11 +11,11 @@ interface DemoToggleProps {
 
 export const DemoToggle: React.FC<DemoToggleProps> = ({ demoMode, onToggle, onSelectTier }) => {
   const tiers = [
-    { id: 'very_low', label: '18/100 Chips', color: 'bg-rose-100 text-rose-800 border-rose-300' },
-    { id: 'low', label: '38/100 Bread', color: 'bg-orange-100 text-orange-800 border-orange-300' },
-    { id: 'moderate', label: '58/100 Cheese', color: 'bg-amber-100 text-amber-800 border-amber-300' },
-    { id: 'high', label: '78/100 Greek Yogurt', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-    { id: 'very_high', label: '95/100 Whole Oats', color: 'bg-green-100 text-green-900 border-green-300' },
+    { id: 'very_low', label: "Lay's Magic Masala", color: 'bg-rose-100 text-rose-800 border-rose-300' },
+    { id: 'low', label: 'English Oven Bread', color: 'bg-orange-100 text-orange-800 border-orange-300' },
+    { id: 'moderate', label: "D'lecta Mozzarella", color: 'bg-amber-100 text-amber-800 border-amber-300' },
+    { id: 'high', label: 'Epigamia Greek Yogurt', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+    { id: 'very_high', label: 'Organic Rolled Oats', color: 'bg-green-100 text-green-900 border-green-300' },
   ];
 
   return (

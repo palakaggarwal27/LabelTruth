@@ -20,6 +20,7 @@ import { FALLBACK_PRESET_PRODUCTS } from '@/data/presets';
 
 import { DemoToggle } from '@/components/DemoToggle';
 import { evaluateProfileSafety } from '@/lib/api';
+import { LOCAL_DEMO_TIER_PRODUCTS } from '@/data/demoTiers';
 
 const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
 
@@ -33,6 +34,30 @@ export default function ScanPage() {
   const [result, setResult] = useState<LabelAnalysisResult | null>(null);
   const [history, setHistory] = useState<ScannedHistoryItem[]>([]);
   const [demoMode, setDemoMode] = useState(false);
+  const [auditStep, setAuditStep] = useState<string>("Initializing forensic scan...");
+
+  // Progressive audit stage timer for realistic and responsive user feedback
+  React.useEffect(() => {
+    if (!loading) {
+      setAuditStep("Initializing forensic scan...");
+      return;
+    }
+    const timer1 = setTimeout(() => {
+      setAuditStep("Extracting optical text & isolating ingredients panel...");
+    }, 1200);
+    const timer2 = setTimeout(() => {
+      setAuditStep("Screening against FSSAI 2020 descending weight & INS codes...");
+    }, 3800);
+    const timer3 = setTimeout(() => {
+      setAuditStep("Synthesizing clinical metabolic impact & quick-commerce alternatives...");
+    }, 7200);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [loading]);
 
   // Instant Profile Re-evaluation when family profile is switched
   React.useEffect(() => {
@@ -140,17 +165,26 @@ export default function ScanPage() {
     const normalized = queryText.trim().toLowerCase();
 
     // 1. Check offline demo suite if demo mode is enabled or product query matches a demo tier
-    if (demoMode) {
-      const { LOCAL_DEMO_TIER_PRODUCTS } = await import('@/data/demoTiers');
-      let matchedKey = 'moderate';
-      if (normalized.includes('chip') || normalized.includes('18')) matchedKey = 'very_low';
-      else if (normalized.includes('bread') || normalized.includes('38')) matchedKey = 'low';
-      else if (normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('58')) matchedKey = 'moderate';
-      else if (normalized.includes('yogurt') || normalized.includes('greek') || normalized.includes('78')) matchedKey = 'high';
-      else if (normalized.includes('oat') || normalized.includes('95')) matchedKey = 'very_high';
+    if (demoMode || LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS]) {
+      let matchedKey: string | null = null;
 
-      const demoItem = LOCAL_DEMO_TIER_PRODUCTS[matchedKey];
-      if (demoItem) {
+      // Exact tier key match first
+      if (LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS]) {
+        matchedKey = queryText;
+      } else if (normalized.includes('lays') || normalized.includes('lay') || normalized.includes('chip') || normalized.includes('18')) {
+        matchedKey = 'very_low';
+      } else if (normalized.includes('english') || normalized.includes('bread') || normalized.includes('38')) {
+        matchedKey = 'low';
+      } else if (normalized.includes('dlecta') || normalized.includes("d'lecta") || normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('58')) {
+        matchedKey = 'moderate';
+      } else if (normalized.includes('epigamia') || normalized.includes('yogurt') || normalized.includes('greek') || normalized.includes('78')) {
+        matchedKey = 'high';
+      } else if (normalized.includes('oat') || normalized.includes('oats') || normalized.includes('95')) {
+        matchedKey = 'very_high';
+      }
+
+      if (matchedKey && LOCAL_DEMO_TIER_PRODUCTS[matchedKey as keyof typeof LOCAL_DEMO_TIER_PRODUCTS]) {
+        const demoItem = LOCAL_DEMO_TIER_PRODUCTS[matchedKey as keyof typeof LOCAL_DEMO_TIER_PRODUCTS];
         setResult(demoItem);
         saveToHistory(demoItem);
         setLoading(false);
@@ -240,7 +274,14 @@ export default function ScanPage() {
           onToggle={(val) => setDemoMode(val)}
           onSelectTier={(tier) => {
             setDemoMode(true);
-            handleProcessQuery(tier);
+            const demoItem = LOCAL_DEMO_TIER_PRODUCTS[tier as keyof typeof LOCAL_DEMO_TIER_PRODUCTS];
+            if (demoItem) {
+              setResult(demoItem);
+              saveToHistory(demoItem);
+              setError(null);
+            } else {
+              handleProcessQuery(tier);
+            }
           }}
         />
       </div>
@@ -316,9 +357,14 @@ export default function ScanPage() {
           )}
 
           {loading && (
-            <div className="mt-6 p-4 border border-zinc-200 bg-zinc-50 rounded-md text-center flex items-center justify-center gap-2 text-xs font-medium text-zinc-700">
-              <RefreshCw className="w-4 h-4 animate-spin text-zinc-900" />
-              <span>Auditing label with Gemini Vision against FSSAI 2020 guidelines...</span>
+            <div className="mt-6 p-4 border border-zinc-200 bg-zinc-50 rounded-md text-center flex flex-col items-center justify-center gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
+                <RefreshCw className="w-4 h-4 animate-spin text-zinc-900" />
+                <span>Forensic Nutritional Audit in Progress</span>
+              </div>
+              <p className="text-[11px] font-mono text-zinc-600 animate-pulse">
+                {auditStep}
+              </p>
             </div>
           )}
 
