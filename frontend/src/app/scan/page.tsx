@@ -78,7 +78,14 @@ export default function ScanPage() {
         .catch((e) => console.warn('Instant profile evaluation notice:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProfile.id, currentProfile.name]);
+  }, [
+    currentProfile.id, 
+    currentProfile.name, 
+    JSON.stringify(currentProfile.medical_conditions), 
+    JSON.stringify(currentProfile.allergies), 
+    JSON.stringify(currentProfile.custom_avoid_list),
+    JSON.stringify(currentProfile.dietary_preferences)
+  ]);
 
   // Load scan history and check for shared URL / query search params from Web Share Target
   React.useEffect(() => {
@@ -198,14 +205,19 @@ export default function ScanPage() {
       }
     }
 
-    // 2. Check client-side history cache only on exact product name match
+    // 2. Check client-side history cache only on exact product name match if NOT older than 30 days
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     const cachedItem = history.find(
       (h) => h.result.product_name.trim().toLowerCase() === normalized
     );
     if (cachedItem) {
-      setResult(cachedItem.result);
-      setLoading(false);
-      return;
+      const scanTime = Number(cachedItem.timestamp || 0);
+      const isExpired = isNaN(scanTime) || scanTime <= 0 || (Date.now() - scanTime > THIRTY_DAYS_MS);
+      if (!isExpired) {
+        setResult(cachedItem.result);
+        setLoading(false);
+        return;
+      }
     }
 
     try {

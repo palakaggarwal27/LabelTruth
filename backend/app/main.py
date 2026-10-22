@@ -1,3 +1,4 @@
+import time
 import json
 import logging
 from typing import Optional
@@ -49,7 +50,8 @@ BASE_PRODUCT_CACHE: Dict[str, LabelAnalysisResult] = {}
 # 2. Profile warnings keyed by safety:{product_hash}:{profile_id}
 SAFETY_CACHE: Dict[str, dict] = {}
 
-AUDIT_CACHE: Dict[str, LabelAnalysisResult] = {}
+AUDIT_CACHE: Dict[str, tuple[float, LabelAnalysisResult]] = {}
+CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days cache validity for food reformulation updates
 
 def compute_product_base_hash(content: bytes) -> str:
     h = hashlib.sha256()
@@ -86,7 +88,7 @@ async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest
         # Check in AUDIT_CACHE fallback
         for k, v in AUDIT_CACHE.items():
             if p_hash in k:
-                base_product = v
+                base_product = v[1] if isinstance(v, tuple) else v
                 break
 
     if not base_product:
@@ -138,8 +140,12 @@ async def analyze_label(
         # Check repeat audit hash cache
         cache_key = compute_audit_hash(image_bytes, user_profile)
         if cache_key in AUDIT_CACHE:
-            logger.info("Serving audit result from SHA-256 memory cache (zero credits used)")
-            return AUDIT_CACHE[cache_key]
+            c_time, c_result = AUDIT_CACHE[cache_key]
+            if time.time() - c_time < CACHE_TTL_SECONDS:
+                logger.info("Serving audit result from 30-day valid SHA-256 memory cache (zero credits used)")
+                return c_result
+            else:
+                del AUDIT_CACHE[cache_key]
 
         result = await gemini_vision_service.analyze_label_image(image_bytes, profile)
 
@@ -180,7 +186,7 @@ async def analyze_label(
                 logger.warning(f"TinyFish partial photo enrichment fallback: {tf_err}")
 
         # Store in cache
-        AUDIT_CACHE[cache_key] = result
+        AUDIT_CACHE[cache_key] = (time.time(), result)
         return result
     except HTTPException:
         raise
@@ -263,19 +269,42 @@ async def smart_scan(
             base_hash = compute_product_base_hash(clean_query.lower().encode('utf-8'))
             query_cache_key = compute_audit_hash(f"{clean_query.lower()}:{delivery_pincode}".encode('utf-8'), user_profile)
             if query_cache_key in AUDIT_CACHE:
-                logger.info(f"Serving query audit for '{clean_query}' from SHA-256 cache (zero credits used)")
-                return AUDIT_CACHE[query_cache_key]
+                c_time, c_result = AUDIT_CACHE[query_cache_key]
+                if time.time() - c_time < CACHE_TTL_SECONDS:
+                    logger.info(f"Serving query audit for '{clean_query}' from 30-day valid cache (zero credits used)")
+                    return c_result
+                else:
+                    del AUDIT_CACHE[query_cache_key]
 
-            from app.services.tinyfish_service import tinyfish_service
+            from app.services.tinyfish_service import tinyfish_service, extract_product_name_from_url, is_waf_block_content
             online_content = ""
+            effective_product_name = clean_query
+
             if clean_query.startswith("http://") or clean_query.startswith("https://"):
+                # Extract clean readable product title from URL slug as guaranteed anchor
+                slug_title = extract_product_name_from_url(clean_query)
+                if slug_title:
+                    effective_product_name = slug_title
+
                 data = await tinyfish_service.fetch_product_details(clean_query)
                 if data:
-                    online_content = str(data.get("text", "") or data.get("content", "") or data)
+                    candidate_content = str(data.get("text", "") or data.get("content", "") or data)
+                    if not is_waf_block_content(candidate_content):
+                        online_content = candidate_content
+                    else:
+                        logger.warning(f"Cloudflare/WAF block detected on {clean_query}. Launching TinyFish Browser Agent...")
+                        agent_content = await tinyfish_service.fetch_page_via_agent_browser(clean_query)
+                        if agent_content and not is_waf_block_content(agent_content):
+                            online_content = agent_content
+
+                # If still blocked or empty, use extracted slug to search authentic packaging
+                if not online_content and slug_title:
+                    logger.info(f"Using extracted product slug '{slug_title}' for verified packaging search")
+                    online_content = await tinyfish_service.search_and_fetch_bop(slug_title) or ""
             else:
                 online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
 
-            result = await gemini_vision_service.analyze_text_query(clean_query, profile, online_content)
+            result = await gemini_vision_service.analyze_text_query(effective_product_name, profile, online_content)
             if isinstance(result, dict):
                 result = LabelAnalysisResult(**result)
 
@@ -309,7 +338,7 @@ async def smart_scan(
                 result.clean_alternatives = hierarchical_alts
                 result.healthier_alternative = hierarchical_alts[0]
 
-            AUDIT_CACHE[query_cache_key] = result
+            AUDIT_CACHE[query_cache_key] = (time.time(), result)
             return result
 
         raise HTTPException(status_code=400, detail="Please provide either a product label photo, product name, or quick-commerce link.")

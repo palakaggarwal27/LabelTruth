@@ -1,4 +1,35 @@
-﻿"""
+def is_whole_food_matrix(ingredients: list, ingredients_text: str, product_name: str) -> bool:
+    """
+    Detects if the food is a 100% clean whole food, pure cold-pressed oil,
+    A2 dairy/ghee, natural nut/seed butter, or single-ingredient whole food
+    as defined under ICMR-NIN 2024 Dietary Guidelines and FSSAI 2020 Schedule II.
+    """
+    lower_ing = ingredients_text.lower()
+    lower_name = product_name.lower()
+
+    # Disqualify any product containing industrial refined fats, sugars, or harsh chemical additives
+    industrial_disqualifiers = [
+        "palm oil", "palmolein", "hydrogenated", "vanaspati", "interesterified",
+        "maltodextrin", "liquid glucose", "invert syrup", "high fructose", "corn syrup",
+        "ins 150d", "ins 621", "msg", "ins 211", "ins 102", "artificial color", "artificial flavour"
+    ]
+    if any(d in lower_ing for d in industrial_disqualifiers):
+        return False
+
+    # Positive whole-food lipid/matrix indicators
+    whole_food_indicators = [
+        "peanut butter", "peanuts", "almonds", "walnuts", "cashews", "chia", "flax",
+        "ghee", "clarified butter", "cold-pressed", "wood-pressed", "extra virgin",
+        "mustard oil", "coconut oil", "olive oil", "sesame oil", "groundnut oil",
+        "whole grain", "rolled oats", "millets", "ragi", "jowar", "bajra",
+        "paneer", "cheese", "curd", "yogurt", "milk", "makhana", "seeds"
+    ]
+    has_indicator = any(w in lower_ing or w in lower_name for w in whole_food_indicators)
+    few_ingredients = len(ingredients) <= 6 if ingredients else True
+
+    return has_indicator and few_ingredients
+
+"""
 Piecewise Mathematical Scoring Engine for LabelTruth.
 Based on FSSAI 2020/2023 Labelling & Display Regulations, ICMR-NIN 2024 Dietary Guidelines, and WHO SEARO Nutrient Profile Model.
 
@@ -243,8 +274,24 @@ def compute_piecewise_health_score(
     b_protein = calculate_protein_bonus(declared_protein, pdcaas, all_ing_text)
     b_fiber = calculate_fiber_bonus(declared_fiber, all_ing_text)
 
+    # Apply ICMR-NIN 2024 & FSSAI 2020 Whole Food Matrix Sparing Rule:
+    # Intrinsic fats (in whole nuts, seeds, pure oils, A2 ghee, natural cheese) are not penalized like industrial palm oil.
+    is_whole_food = is_whole_food_matrix(ingredients, all_ing_text, product_name)
+    b_whole_food = 0.0
+    if is_whole_food:
+        # 1. Natural caloric density in whole nuts/seeds comes with cellular fiber and minerals; waive empty calorie penalty
+        d_ed = 0.0
+        # 2. Intrinsic healthy lipids (dairy fat, oleic/linoleic plant fats): cap saturated fat deduction to max 3 points if zero palm oil
+        if "palm" not in all_ing_text and "hydrogenated" not in all_ing_text:
+            d_sf = min(3.0, d_sf * 0.25)
+        # 3. Natural mineral sodium (e.g. pink salt, naturally cured whole foods): do not excessively penalize
+        if sodium <= 650.0:
+            d_na = min(4.0, d_na * 0.35)
+        # 4. Award clean whole-food formulation bonus
+        b_whole_food = 8.0
+
     total_deductions = d_tf + d_as + d_sf + d_na + d_ed + d_ins
-    total_bonuses = b_protein + b_fiber
+    total_bonuses = b_protein + b_fiber + b_whole_food
 
     raw_score = 100.0 - total_deductions + total_bonuses
     final_score = int(round(min(100.0, max(0.0, raw_score))))

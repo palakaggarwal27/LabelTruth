@@ -30,44 +30,132 @@ export const CartAuditView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CartAuditResponse | null>(null);
   const [detectingLoc, setDetectingLoc] = useState(false);
+  const [auditStep, setAuditStep] = useState<string>("Launching TinyFish Browser to access cart & bypass WAF challenges...");
 
-  // Auto-fill pincode from session storage if present
-  React.useEffect(() => {
-    const cachedPin = sessionStorage.getItem('labeltruth_user_pincode');
-    if (cachedPin && /^\d{6}$/.test(cachedPin)) {
-      setPincode(cachedPin);
+  const savePincode = (pin: string) => {
+    setPincode(pin);
+    try {
+      sessionStorage.setItem('labeltruth_user_pincode', pin);
+      localStorage.setItem('labeltruth_user_pincode', pin);
+    } catch {
+      // ignore
     }
+  };
+
+  // Automatically detect user location and pincode on mount without requiring manual click
+  React.useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode');
+      if (cached && /^\d{6}$/.test(cached)) {
+        setPincode(cached);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    handleDetectLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Progressive audit stage timer for cart inspection
+  React.useEffect(() => {
+    if (!loading) {
+      setAuditStep("Launching TinyFish Browser to access cart & bypass WAF challenges...");
+      return;
+    }
+    const timer1 = setTimeout(() => {
+      setAuditStep("Extracting cart items, ingredients, and nutritional tables...");
+    }, 1800);
+    const timer2 = setTimeout(() => {
+      setAuditStep("Auditing items against FSSAI standards & active clinical profile...");
+    }, 4800);
+    const timer3 = setTimeout(() => {
+      setAuditStep("TinyFish Agent searching live dark-store inventory for verified cleaner swaps at PIN...");
+    }, 8200);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [loading]);
 
   const handleDetectLocation = () => {
     setDetectingLoc(true);
+
+    const tryIpFallback = async () => {
+      try {
+        const ipRes = await fetch("https://ipapi.co/json/");
+        if (ipRes.ok) {
+          const ipData = await ipRes.json();
+          const match = String(ipData?.postal || '').match(/\b([1-9][0-9]{5})\b/);
+          if (match) {
+            savePincode(match[1]);
+            return true;
+          }
+        }
+      } catch (e) {
+        console.warn("IP location notice:", e);
+      }
+      return false;
+    };
+
     if (!navigator.geolocation) {
-      setDetectingLoc(false);
+      tryIpFallback().finally(() => setDetectingLoc(false));
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`);
-          if (res.ok) {
-            const data = await res.json();
-            const pin = data?.address?.postcode || data?.address?.postal_code || '';
-            const match = pin.match(/\b([1-9][0-9]{5})\b/);
-            if (match) {
-              setPincode(match[1]);
-              sessionStorage.setItem('labeltruth_user_pincode', match[1]);
+
+          // 1. High precision Nominatim with street level zoom 18
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&format=json&addressdetails=1`);
+            if (res.ok) {
+              const data = await res.json();
+              const pinCandidate = data?.address?.postcode || data?.address?.postal_code || '';
+              const match = String(pinCandidate).match(/\b([1-9][0-9]{5})\b/);
+              if (match) {
+                savePincode(match[1]);
+                return;
+              }
             }
+          } catch (osmErr) {
+            console.warn("Nominatim reverse geocode notice:", osmErr);
           }
-        } catch (e) {
-          console.warn('GPS detection notice:', e);
+
+          // 2. BigDataCloud reverse geocode client
+          try {
+            const bdcRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+            if (bdcRes.ok) {
+              const data = await bdcRes.json();
+              const pin = data?.postcode || data?.postCode;
+              const match = String(pin || '').match(/\b([1-9][0-9]{5})\b/);
+              if (match) {
+                savePincode(match[1]);
+                return;
+              }
+            }
+          } catch (bdErr) {
+            console.warn("BigDataCloud notice:", bdErr);
+          }
+
+          await tryIpFallback();
+        } catch {
+          await tryIpFallback();
         } finally {
           setDetectingLoc(false);
         }
       },
-      () => setDetectingLoc(false),
-      { timeout: 8000 }
+      async (err) => {
+        console.warn("Browser GPS permission or timeout:", err);
+        await tryIpFallback();
+        setDetectingLoc(false);
+      },
+      { timeout: 12000, enableHighAccuracy: true, maximumAge: 60000 }
     );
   };
 
@@ -170,7 +258,7 @@ export const CartAuditView: React.FC = () => {
                   type="text"
                   maxLength={6}
                   value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
+                  onChange={(e) => savePincode(e.target.value)}
                   placeholder="110001"
                   className="w-24 px-2.5 py-1 text-xs font-mono border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
                 />
@@ -261,13 +349,18 @@ export const CartAuditView: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+              className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
             >
               {loading ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Auditing Cart Products & Searching Clean Swaps...</span>
-                </>
+                <div className="flex flex-col items-center gap-1.5 py-0.5">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span className="font-semibold text-xs tracking-wide">Forensic Cart Audit in Progress</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-300 font-normal animate-pulse">
+                    {auditStep}
+                  </span>
+                </div>
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5" />

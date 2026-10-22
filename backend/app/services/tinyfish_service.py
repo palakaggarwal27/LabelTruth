@@ -1,3 +1,36 @@
+def extract_product_name_from_url(url: str) -> str:
+    """Extract clean readable product title from quick-commerce and ecommerce URL slugs"""
+    import re
+    from urllib.parse import urlparse, unquote
+
+    parsed = urlparse(url)
+    path = unquote(parsed.path)
+
+    match = re.search(r'/(?:pn|prn|pd|product|item)/([^/?#]+)', path)
+    slug = match.group(1) if match else ""
+
+    if not slug:
+        segments = [s for s in path.split('/') if s and not s.isdigit() and len(s) > 3]
+        if segments:
+            slug = segments[-1]
+
+    clean = re.sub(r'[-_]+', ' ', slug)
+    clean = re.sub(r'\b(pvid|prid|pid|id|dp|ref)\b.*', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'[^a-zA-Z0-9 ]+', '', clean).strip()
+    return clean.title() if len(clean) > 3 else ""
+
+def is_waf_block_content(content: str) -> bool:
+    """Detect if fetched content is an anti-bot Cloudflare / WAF block page"""
+    if not content:
+        return False
+    lower = content.lower()
+    waf_indicators = [
+        "cloudflare", "waf block", "access denied", "attention required",
+        "just a moment...", "please verify you are a human", "ray id:", "security challenge",
+        "ddos-guard", "403 forbidden"
+    ]
+    return any(ind in lower for ind in waf_indicators)
+
 import logging
 import httpx
 from typing import Optional, Dict, Any
@@ -6,6 +39,32 @@ from app.config import TINYFISH_API_KEY
 logger = logging.getLogger(__name__)
 
 class TinyFishService:
+    async def fetch_page_via_agent_browser(self, url: str) -> Optional[str]:
+        """
+        Launches TinyFish autonomous browser agent to open the URL, execute client-side JavaScript,
+        bypass Cloudflare / anti-bot challenges, and extract rendered packaging text.
+        """
+        if not self.api_key:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.post(
+                    "https://agent.tinyfish.ai/v1/run",
+                    headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
+                    json={
+                        "instructions": f"Open the URL '{url}' in a full headless browser, wait 4 seconds for full DOM rendering and bot verification to pass, extract all visible text including the product title, brand, ingredients panel, and nutrition facts table.",
+                        "url": url
+                    }
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    text = data.get("content") or data.get("text") or data.get("extracted_text")
+                    if text and not is_waf_block_content(str(text)):
+                        return str(text)
+        except Exception as e:
+            logger.warning(f"TinyFish agent browser execution notice: {e}")
+        return None
+
     def __init__(self):
         self.api_key = TINYFISH_API_KEY
         self.headers = {
@@ -214,5 +273,119 @@ class TinyFishService:
         except Exception as e:
             logger.warning(f"TinyFish agentic audit fallback notice: {e}")
             return None
+
+
+    async def extract_cart_items_via_agent_browser(self, cart_url: str, pincode: str = "110001") -> Dict[str, Any]:
+        """
+        Launches TinyFish autonomous browser agent to open the cart link in a headless browser,
+        set delivery pincode, navigate to the cart / basket, wait for DOM hydration,
+        and extract all item names, quantities, and visible packaging labels.
+        """
+        domain_store = "Quick-Commerce"
+        lower_url = cart_url.lower()
+        if "zepto" in lower_url:
+            domain_store = "Zepto"
+        elif "blinkit" in lower_url:
+            domain_store = "Blinkit"
+        elif "instamart" in lower_url:
+            domain_store = "Swiggy Instamart"
+        elif "bigbasket" in lower_url:
+            domain_store = "BigBasket"
+
+        # 1. Check if the URL is a direct product page rather than a multi-item cart
+        prod_slug_name = extract_product_name_from_url(cart_url)
+
+        # 2. Extract any products specified directly in URL parameters (e.g. ?items=... or ?products=...)
+        param_items = []
+        try:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(cart_url)
+            qs = parse_qs(parsed.query)
+            for k, vals in qs.items():
+                if any(term in k.lower() for term in ["item", "prod", "q", "title", "sku"]):
+                    for v in vals:
+                        for part in v.split(','):
+                            cleaned = part.replace("-", " ").replace("_", " ").strip()
+                            if len(cleaned) > 2:
+                                param_items.append({"product_name": cleaned.title(), "quantity": 1})
+        except Exception:
+            pass
+
+        # 3. Call TinyFish autonomous browser agent to navigate and extract live cart DOM
+        agent_items = []
+        if self.api_key:
+            try:
+                async with httpx.AsyncClient(timeout=25.0) as client:
+                    res = await client.post(
+                        "https://agent.tinyfish.ai/v1/run",
+                        headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
+                        json={
+                            "instructions": f"Open the quick-commerce URL '{cart_url}' in a headless browser. Set delivery pincode to '{pincode}'. Navigate to the cart / checkout view. Wait 3 seconds for DOM hydration. Extract all products in the cart: product name, brand, quantity, and any visible ingredient or nutritional text. Return JSON: {{'store_name': '{domain_store}', 'items': [{{'product_name': '...', 'quantity': 1, 'label_snippet': '...'}}]}}",
+                            "url": cart_url,
+                            "pincode": pincode
+                        }
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        if isinstance(data, dict):
+                            if data.get("store_name"):
+                                domain_store = data["store_name"]
+                            if data.get("items") and isinstance(data["items"], list):
+                                agent_items = data["items"]
+                            elif data.get("products") and isinstance(data["products"], list):
+                                agent_items = data["products"]
+                            elif data.get("text") or data.get("content"):
+                                raw_text = str(data.get("text") or data.get("content"))
+                                agent_items = self._parse_items_from_text(raw_text)
+            except Exception as e:
+                logger.warning(f"TinyFish cart agent browser navigation notice: {e}")
+
+        # 4. If agent didn't extract items, try TinyFetch to inspect static DOM text
+        if not agent_items and not param_items:
+            try:
+                fetch_data = await self.fetch_product_details(cart_url)
+                if fetch_data:
+                    c_text = str(fetch_data.get("text", "") or fetch_data.get("content", ""))
+                    if c_text and not is_waf_block_content(c_text):
+                        agent_items = self._parse_items_from_text(c_text)
+            except Exception as e:
+                logger.warning(f"TinyFetch cart fallback notice: {e}")
+
+        # Merge findings
+        all_items = []
+        seen = set()
+        for it in agent_items + param_items:
+            p_name = it.get("product_name") or it.get("name") or ""
+            p_name = p_name.strip()
+            if p_name and p_name.lower() not in seen:
+                seen.add(p_name.lower())
+                all_items.append({
+                    "product_name": p_name,
+                    "quantity": int(it.get("quantity", 1)),
+                    "label_snippet": it.get("label_snippet", "")
+                })
+
+        # If still empty but URL has a product slug, use it as a 1-item cart
+        if not all_items and prod_slug_name:
+            all_items.append({
+                "product_name": prod_slug_name,
+                "quantity": 1,
+                "label_snippet": ""
+            })
+
+        return {"store_name": domain_store, "items": all_items}
+
+    def _parse_items_from_text(self, text: str) -> list:
+        """Helper to extract product names and quantities from scraped page text"""
+        items = []
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        for line in lines:
+            if any(unit in line.lower() for unit in ["g", "gm", "kg", "ml", "l", "pack", "pcs"]) and len(line) < 80:
+                cleaned = re.sub(r'[^\w\s\(\)\.-]', '', line).strip()
+                if len(cleaned) > 5:
+                    items.append({"product_name": cleaned, "quantity": 1})
+                    if len(items) >= 10:
+                        break
+        return items
 
 tinyfish_service = TinyFishService()

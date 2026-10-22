@@ -412,3 +412,70 @@ def test_audit_cart_endpoint():
     assert first_item["cleaner_alternative"]["name"] != first_item["product_name"]
     assert "bhujia" not in first_item["cleaner_alternative"]["name"].lower()
     assert first_item["cleaner_alternative"]["health_score"] > first_item["health_score"]
+
+def test_whole_food_natural_fat_scoring():
+    """Verify clean whole food (100% peanut butter) is not penalized 30 points for natural fat/calories"""
+    from app.services.scoring_engine import compute_piecewise_health_score
+    from app.schemas.analysis import NutritionCardAnalysis
+
+    mock_nutrition = {
+        "calories_kcal": 588.0,
+        "total_fat_g": 50.0,
+        "saturated_fat_g": 9.0,
+        "trans_fat_g": 0.0,
+        "added_sugars_g": 0.0,
+        "sodium_mg": 18.0
+    }
+    mock_ingredients = [{"ingredient": "100% Roasted Peanuts"}]
+    
+    score_res = compute_piecewise_health_score(
+        nutrition=mock_nutrition,
+        ingredients=mock_ingredients,
+        product_name="Pintola 100% Pure Peanut Butter"
+    )
+    # Under ICMR-NIN sparing rules, score should be >= 88 rather than losing 35 points
+    assert score_res["final_health_score"] >= 88
+    assert score_res["deductions"]["energy_density_penalty"] == 0.0
+    assert score_res["deductions"]["saturated_fat_penalty"] <= 3.0
+
+def test_extract_product_name_from_url_slug():
+    """Verify product name is cleanly extracted from quick-commerce URL slugs"""
+    from app.services.tinyfish_service import extract_product_name_from_url
+
+    zepto_url = "https://www.zepto.com/pn/amul-salted-butter-500g/pvid/12345"
+    assert "Amul Salted Butter" in extract_product_name_from_url(zepto_url)
+
+    blinkit_url = "https://blinkit.com/prn/haldirams-nagpur-bhujia-sev/prid/98765"
+    assert "Haldirams Nagpur Bhujia" in extract_product_name_from_url(blinkit_url)
+
+def test_is_waf_block_content():
+    """Verify Cloudflare WAF block pages are properly flagged"""
+    from app.services.tinyfish_service import is_waf_block_content
+
+    blocked_html = "<html><head><title>Attention Required! | Cloudflare</title></head><body>Please verify you are a human. Ray ID: 890123</body></html>"
+    assert is_waf_block_content(blocked_html) is True
+
+    clean_html = "<html><body><h1>Amul Pure Ghee 1L</h1><p>Ingredients: Milk Fat</p></body></html>"
+    assert is_waf_block_content(clean_html) is False
+
+@pytest.mark.anyio
+async def test_cart_agent_browser_url_extraction():
+    """Verify TinyFish browser agent extracts cart items from URL parameters and product slugs"""
+    from app.services.tinyfish_service import tinyfish_service
+
+    # 1. Test URL with query parameters
+    cart_url = "https://www.zepto.com/cart?items=Oreo-Biscuits,Haldirams-Aloo-Bhujia"
+    res = await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode="110001")
+    assert res["store_name"] == "Zepto"
+    assert len(res["items"]) >= 2
+    names = [it["product_name"] for it in res["items"]]
+    assert any("Oreo" in n for n in names)
+    assert any("Bhujia" in n for n in names)
+
+    # 2. Test direct product page URL
+    prod_url = "https://blinkit.com/prn/haldirams-nagpur-bhujia-sev/prid/98765"
+    res_prod = await tinyfish_service.extract_cart_items_via_agent_browser(prod_url, pincode="560001")
+    assert res_prod["store_name"] == "Blinkit"
+    assert len(res_prod["items"]) >= 1
+    assert "Bhujia" in res_prod["items"][0]["product_name"]
+

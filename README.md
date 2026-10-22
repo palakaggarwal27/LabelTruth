@@ -21,11 +21,14 @@ Front-of-pack claims in India frequently deceive consumers through sophisticated
 ### 1. 🛒 Autonomous Quick-Commerce Cart Audit (Zepto & Blinkit)
 Audit your entire grocery cart before checkout to eliminate hidden chemical additives:
 - **Dual Input Modes**: Upload a screenshot of your quick-commerce checkout screen or paste a shared cart link.
-- **Vision OCR & TinyFish Web Agents**: Automatically parses all food items, brands, and quantities from the cart.
+- **TinyFish Autonomous Browser Agent**: For cart links, launches a headless desktop browser session to bypass Cloudflare/WAF bot challenges, navigate the cart DOM, wait for client hydration, and extract all cart line items, brands, quantities, and visible labels.
+- **Multi-Stage Progressive Loading**: Dynamic visual feedback across 4 audit phases ("Launching TinyFish Browser...", "Extracting cart items...", "Auditing against FSSAI & Health Profile...", "Searching live dark-store inventory for clean swaps...").
+- **Deep Back-of-Pack Extraction & Gemini Clinical Audit**: For every cart item, TinySearch and TinyFetch retrieve authentic packaging panels and feed them to Gemini AI for deep clinical analysis, tailored contraindication warnings, and FSSAI 2020 compliance verification.
 - **Cart Health Transformation**: Computes the **Original Cart Health Score** vs. **Upgraded Cart Score** (e.g. `40/100 -> 88/100 (+48 pts cleaner)`) and totals the harmful additives removed.
 - **Category-Based Clean Swapping**: Recommends superior, whole-food alternatives in the exact same food category (e.g. *The Whole Truth Roasted Makhana* or *Slurrp Farm Ragi Puffs* for fried namkeen; *Early Foods Sprouted Ragi Cocoa* for sugary malt drinks).
 - **Strict Anti-Same-Product Filter**: Guarantees the swap is a distinct, cleaner brand—never recommending the same ultra-processed product back to the user.
-- **Direct Product Detail Page (PDP) Links**: Every swap provides an instant 1-click button opening the verified product page on Zepto or Blinkit at your delivery pincode.
+- **Direct Product Detail Page (PDP) Links**: TinyFish agent navigates to the matching clean alternative and captures verified 1-click product detail page URLs on Zepto or Blinkit at your delivery pincode.
+
 
 ### 2. ⚖️ Head-to-Head Product Comparison
 Compare two packaged snacks, beverages, or groceries side-by-side:
@@ -49,13 +52,16 @@ LabelTruth integrates **TinyFish AI** as an autonomous browser agent layer for r
 - **TinyFetch Extraction**: Deep-fetches and parses unstructured DOM content from online product listings, isolating ingredient lists, allergen statements, and nutrition tables.
 - **Credit-Smart Alternative Checking**: For products scoring 85 or 85+, the AI checks whether an even cleaner alternative actually exists on the Indian market. If the product is already at peak purity (e.g. 100% single-ingredient oats or cold-pressed oil), external search calls are skipped, saving significant API credits.
 
-### 5. 🩺 Dynamic Disease-Severity Scoring & Offline Evaluator
+### 5. 🩺 Dynamic Disease-Severity Scoring, ICMR-NIN Whole-Food Matrix & Profile Evaluator
+- **Justifiable Whole-Food Matrix Scoring (ICMR-NIN 2024 & FSSAI 2020)**: Pure whole foods (100% peanut butter, nuts, cold-pressed oils, pure A2 ghee, seeds) are spared from artificial caloric density penalties and saturated fat deductions when free from industrial palm oil/trans fats. Whole-food items score 88–98/100 instead of losing 30+ points for natural intrinsic fats.
 - **Severity-Based Point Deductions**:
   - **Severe Allergies & Celiac**: Deducts **-30 to -50 points**, sets verdict to `AVOID (VIOLATES PROFILE)`, and triggers urgent clinical warnings.
   - **Metabolic Conditions (Diabetes, Hypertension, Fatty Liver)**: Proportional deductions (**-15 to -25 points**) for high-GI sugars (maltodextrin GI 110), excess sodium, MSG, or trans fats.
   - **Digestive Sensitivities (Acidity, Acid Reflux, GERD, Gastritis, IBS)**: Justifiable deductions (**-8 to -18 points**) for triggering ingredients (Citric Acid `INS 330`, carbonation, artificial souring agents, caffeine, spicy irritants) with explicit flare-up risk explanation (~70% likelihood of acidity flare-up).
+- **30-Day Cache Freshness & Instant Profile Revision**: Product audits are cached for up to 30 days (`CACHE_TTL_SECONDS = 30 * 24 * 3600`) to respect API credits while tracking manufacturer recipe reformulations. Modifying any profile medical condition, allergy, or dietary restriction instantly invalidates the safety evaluation and triggers an immediate fresh clinical re-audit.
 - **Instant Offline Evaluator (`/api/evaluate-profile-safety`)**: Re-evaluates audited products against any family member's clinical restrictions in `<50ms` without calling external LLM APIs.
 - **Instant Clinical Dictionary (`KNOWN_STANDARDS`)**: Validates 35+ common medical conditions, additives, and sensitivities (acidity, GERD, gastritis, fatty liver, PCOS, lactose intolerance, etc.) in 0ms with zero credit cost.
+
 
 ### 6. 📊 Full Nutrient Card Decoder & Bioavailability Engine
 - **Decoded Nutrition Facts Panel**: Parses energy, total fats, saturated fat, trans fat, total carbohydrates, added sugars, and sodium per 100g.

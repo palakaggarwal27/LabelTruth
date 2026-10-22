@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import asyncio
 from typing import Optional, List, Dict, Any
 from google import genai
 from google.genai import types
@@ -214,79 +215,12 @@ class CartAuditService:
 
         return {"store_name": "Quick-Commerce", "items": []}
 
-    async def extract_items_from_url(self, cart_url: str) -> Dict[str, Any]:
-        """Extract items from cart URL using TinyFish Agent / Fetch"""
-        domain_store = "Quick-Commerce"
-        if "zepto" in cart_url.lower():
-            domain_store = "Zepto"
-        elif "blinkit" in cart_url.lower():
-            domain_store = "Blinkit"
-        elif "instamart" in cart_url.lower():
-            domain_store = "Swiggy Instamart"
-
-        # Check for embedded product parameters or slugs in the URL
-        extracted_from_params = []
-        try:
-            from urllib.parse import urlparse, parse_qs
-            parsed = urlparse(cart_url)
-            qs = parse_qs(parsed.query)
-            for k, vals in qs.items():
-                if any(term in k.lower() for term in ["item", "prod", "q", "title"]):
-                    for v in vals:
-                        cleaned = v.replace("-", " ").replace("_", " ").strip()
-                        if len(cleaned) > 2:
-                            extracted_from_params.append({"product_name": cleaned.title(), "quantity": 1})
-        except Exception:
-            pass
-
-        if extracted_from_params:
-            return {"store_name": domain_store, "items": extracted_from_params}
-
-        # Attempt TinyFetch to read live page
-        content = ""
-        try:
-            details = await tinyfish_service.fetch_product_details(cart_url)
-            if details:
-                content = str(details.get("text", "") or details.get("content", ""))
-        except Exception as e:
-            logger.warning(f"TinyFetch cart url notice: {e}")
-
-        if content and len(content) > 100:
-            prompt = f"""You are LabelTruth Cart Intelligence Auditor.
-Extract the quick-commerce store name and list of food products from this cart text:
-{content[:4000]}
-
-Return JSON:
-{{
-  "store_name": "{domain_store}",
-  "items": [
-    {{"product_name": "Full Product Name", "quantity": 1}}
-  ]
-}}"""
-            for cl in self._get_active_clients():
-                if not cl:
-                    continue
-                for model_name in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]:
-                    try:
-                        response = cl.models.generate_content(
-                            model=model_name,
-                            contents=prompt,
-                            config=types.GenerateContentConfig(response_mime_type="application/json")
-                        )
-                        txt = response.text.strip()
-                        if txt.startswith("```json"):
-                            txt = txt[7:]
-                        if txt.startswith("```"):
-                            txt = txt[3:]
-                        if txt.endswith("```"):
-                            txt = txt[:-3]
-                        parsed_res = json.loads(txt.strip())
-                        if parsed_res.get("items"):
-                            return parsed_res
-                    except Exception:
-                        continue
-
-        return {"store_name": domain_store, "items": []}
+    async def extract_items_from_url(self, cart_url: str, pincode: str = "110001") -> Dict[str, Any]:
+        """
+        Extract items from cart or product URL using TinyFish autonomous browser agent & DOM inspection.
+        Opens the URL in headless browser, navigates to cart/product, waits for hydration, and extracts items.
+        """
+        return await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode)
 
     def _determine_category_and_benchmark(self, product_name: str) -> tuple[str, Dict[str, Any]]:
         """Maps any packaged product to its category and clean benchmark"""
@@ -341,6 +275,164 @@ Return JSON:
 
         return False
 
+    async def _audit_single_item(
+        self,
+        item: dict,
+        pincode: str,
+        user_profile: UserProfile,
+        store_name: str
+    ) -> CartItemAudit:
+        """
+        Deep clinical audit of a single cart item:
+        1. Fetch packaging/back-of-pack labels via TinySearch + TinyFetch
+        2. Give packaging data to Gemini AI for health scoring and medical profile evaluation
+        3. Use TinyFish Browser Agent to find cleaner alternatives at user's pincode with direct PDP URLs
+        """
+        p_name = item.get("product_name", "Packaged Product").strip()
+        qty = int(item.get("quantity", 1))
+
+        # 1. Fetch back-of-pack label via TinyFish Search & Fetch
+        bop_text = item.get("label_snippet") or ""
+        if not bop_text:
+            try:
+                bop_text = await tinyfish_service.search_and_fetch_bop(p_name) or ""
+            except Exception as bop_err:
+                logger.warning(f"TinyFish search/fetch BOP notice for '{p_name}': {bop_err}")
+
+        # 2. Analyze via Gemini AI text query (with fallback to clinical scoring engine)
+        analysis_res = None
+        try:
+            from app.services.gemini_vision import gemini_vision_service
+            analysis_res = await gemini_vision_service.analyze_text_query(
+                p_name,
+                user_profile,
+                bop_text
+            )
+        except Exception as gem_err:
+            logger.warning(f"Gemini analysis for cart item '{p_name}' notice: {gem_err}")
+
+        # 3. Extract health score, verdict, and clinical concerns
+        if analysis_res:
+            item_score = analysis_res.health_score
+            verdict = analysis_res.personalized_verdict
+            concerns = []
+            for claim in getattr(analysis_res, "deceptive_claims_flagged", []):
+                concerns.append(f"Claim: {claim}")
+            for viol in getattr(analysis_res, "fssai_violations", []):
+                concerns.append(f"FSSAI: {viol}")
+            for ing in getattr(analysis_res, "ingredient_breakdown", []):
+                c_lvl = getattr(ing, "concern_level", "LOW")
+                if c_lvl in ("HIGH", "MEDIUM"):
+                    p_warn = getattr(ing, "personalized_warning", None)
+                    if p_warn:
+                        concerns.append(f"{getattr(ing, 'ingredient', '')}: {p_warn}")
+                    else:
+                        concerns.append(f"{getattr(ing, 'ingredient', '')} ({getattr(ing, 'purpose', 'Additive')})")
+            if not concerns and getattr(analysis_res, "simple_summary", None):
+                concerns.append(analysis_res.simple_summary[:120])
+        else:
+            # Deterministic clinical fallback
+            p_lower = p_name.lower()
+            base_score = 45
+            concerns = []
+            meds = [m.lower() for m in (user_profile.medical_conditions or [])]
+
+            if any(k in p_lower for k in ["biscuit", "cookie", "cake", "rusk"]):
+                base_score = 40
+                concerns.append("Refined wheat flour (Maida) & palm oil")
+                if any("acidity" in m or "gerd" in m for m in meds):
+                    concerns.append("Souring agents / acidity triggers (-10 pts penalty)")
+                    base_score -= 10
+            elif any(k in p_lower for k in ["cola", "pepsi", "coke", "soda", "fizzy", "dew", "sprite"]):
+                base_score = 22
+                concerns.append("High added liquid sugars (10.6g/100ml) & phosphoric acid")
+                if any("acidity" in m or "gerd" in m for m in meds):
+                    concerns.append("Carbonation & phosphoric acid stimulate gastric reflux (-15 pts)")
+                    base_score -= 15
+            elif any(k in p_lower for k in ["bhujia", "chips", "kurkure", "namkeen", "sev"]):
+                base_score = 32
+                concerns.append("Deep fried in palm oil with excessive sodium & synthetic INS flavorings")
+                if any("hypertension" in m for m in meds):
+                    concerns.append("High sodium worsens arterial blood pressure (-10 pts)")
+                    base_score -= 10
+                if any("acidity" in m or "gerd" in m for m in meds):
+                    concerns.append("Deep-fried trans-fat matrix provokes acid reflux (-10 pts)")
+                    base_score -= 10
+            elif any(k in p_lower for k in ["bournvita", "horlicks", "complan", "boost"]):
+                base_score = 35
+                concerns.append("Over 50% added sugars and maltodextrin (GI 110)")
+                if any("diabetes" in m for m in meds):
+                    concerns.append("High glycemic surge risk for diabetes (-20 pts)")
+                    base_score -= 15
+            elif any(k in p_lower for k in ["noodle", "maggi", "pasta"]):
+                base_score = 34
+                concerns.append("Refined maida block flash-fried in palm oil with MSG flavor mix")
+            else:
+                base_score = 52
+                concerns.append("Industrial additives and refined processing")
+
+            item_score = max(10, min(100, base_score))
+            if item_score >= 75:
+                verdict = "SAFE FOR YOU"
+            elif item_score >= 45:
+                verdict = "CAUTION"
+            else:
+                verdict = "AVOID (VIOLATES PROFILE)"
+
+        # 4. Find cleaner alternatives using TinyFish Browser Agent
+        category_key, benchmark = self._determine_category_and_benchmark(p_name)
+        clean_alt_candidate = None
+
+        try:
+            clean_query = f"clean organic whole food {category_key} {store_name}"
+            live_alts = await tinyfish_service.find_pincode_alternatives(clean_query, pincode)
+            for cand in live_alts:
+                cand_name = cand.get("name") or cand.get("product_name") or ""
+                cand_score = int(cand.get("health_score", 85))
+                if not self._is_same_product_or_brand(p_name, cand_name) and cand_score > item_score + 10:
+                    v_res = validate_and_clean_pdp_url(cand.get("direct_pdp_url") or "")
+                    clean_alt_candidate = HealthierAlternative(
+                        name=cand_name,
+                        product_name=cand.get("product_name") or cand_name,
+                        health_score=cand_score,
+                        key_benefit="100% whole food formulation, zero palm oil, zero synthetic additives.",
+                        price_comparison="Comparable",
+                        personalized_fit="Safe and verified for your health profile.",
+                        direct_pdp_url=v_res.get("url") or cand.get("direct_pdp_url"),
+                        is_direct_pdp=v_res.get("is_pdp", True),
+                        pincode_available=True,
+                        type="CLEAN_COMMERCIAL",
+                        reason=f"Verified cleaner swap on {store_name} at PIN {pincode}."
+                    )
+                    break
+        except Exception as alt_err:
+            logger.warning(f"Live alternative search notice for {p_name}: {alt_err}")
+
+        if not clean_alt_candidate:
+            v_res = validate_and_clean_pdp_url(benchmark["direct_pdp_url"])
+            clean_alt_candidate = HealthierAlternative(
+                name=benchmark["name"],
+                product_name=benchmark["product_name"],
+                health_score=benchmark["health_score"],
+                key_benefit=benchmark["key_benefit"],
+                price_comparison="Comparable",
+                personalized_fit="Fully aligned with your active health profile.",
+                direct_pdp_url=v_res.get("url") or benchmark["direct_pdp_url"],
+                is_direct_pdp=True,
+                pincode_available=True,
+                type="CLEAN_COMMERCIAL",
+                reason=f"Verified clean swap on {store_name} at PIN {pincode}: {benchmark['reason']}"
+            )
+
+        return CartItemAudit(
+            product_name=p_name,
+            quantity=qty,
+            health_score=item_score,
+            personalized_verdict=verdict,
+            key_concerns=concerns,
+            cleaner_alternative=clean_alt_candidate
+        )
+
     async def audit_cart(
         self,
         image_bytes: Optional[bytes],
@@ -348,12 +440,12 @@ Return JSON:
         pincode: str,
         user_profile: UserProfile
     ) -> CartAuditResponse:
-        """Full end-to-end cart audit with guaranteed superior, distinct clean swaps"""
+        """Full end-to-end cart audit using TinyFish browser agent, TinyFetch, and Gemini clinical reasoning"""
         extracted = {}
         if image_bytes:
             extracted = await self.extract_items_from_image(image_bytes)
         elif cart_url:
-            extracted = await self.extract_items_from_url(cart_url)
+            extracted = await self.extract_items_from_url(cart_url, pincode)
 
         store_name = extracted.get("store_name") or "Zepto"
         raw_items = extracted.get("items") or []
@@ -371,126 +463,20 @@ Return JSON:
                     "Please ensure the cart screenshot clearly shows the item names and quantities."
                 )
 
-        audited_items: List[CartItemAudit] = []
-        original_scores: List[int] = []
-        swapped_scores: List[int] = []
-        clean_count = 0
-        red_flags_prevented = 0
+        # Concurrently audit items in parallel via asyncio.gather
+        tasks = [
+            self._audit_single_item(item, pincode, user_profile, store_name)
+            for item in raw_items[:8]
+        ]
+        audited_items: List[CartItemAudit] = await asyncio.gather(*tasks)
 
-        meds = [m.lower() for m in (user_profile.medical_conditions or [])]
-
-        for item in raw_items[:8]:
-            p_name = item.get("product_name", "Packaged Product").strip()
-            qty = int(item.get("quantity", 1))
-            p_lower = p_name.lower()
-
-            # Base Health Score and Concerns derivation
-            base_score = 45
-            concerns = []
-
-            if any(k in p_lower for k in ["biscuit", "cookie", "cake", "rusk"]):
-                base_score = 40
-                concerns.append("Refined wheat flour (Maida) & palm oil")
-                if any("acidity" in m or "gerd" in m for m in meds) and any(k in p_lower for k in ["cream", "chocolate", "lemon"]):
-                    concerns.append("Souring agents / acidity triggers (-10 pts)")
-                    base_score -= 10
-            elif any(k in p_lower for k in ["cola", "pepsi", "coke", "soda", "fizzy", "dew", "sprite"]):
-                base_score = 22
-                concerns.append("High added liquid sugars (10.6g/100ml) & phosphoric acid")
-                if any("acidity" in m or "gerd" in m for m in meds):
-                    concerns.append("Carbonation & acidity stimulate gastric reflux (-15 pts)")
-                    base_score -= 15
-            elif any(k in p_lower for k in ["bhujia", "chips", "kurkure", "namkeen", "sev"]):
-                base_score = 32
-                concerns.append("Deep fried in palm oil with excessive sodium & synthetic flavorings")
-                if any("hypertension" in m for m in meds):
-                    concerns.append("High sodium worsens arterial blood pressure")
-            elif any(k in p_lower for k in ["bournvita", "horlicks", "complan", "boost"]):
-                base_score = 35
-                concerns.append("Over 50% added sugars and maltodextrin (GI 110)")
-                if any("diabetes" in m for m in meds):
-                    concerns.append("High glycemic surge risk for diabetes (-20 pts)")
-                    base_score -= 15
-            elif any(k in p_lower for k in ["noodle", "maggi", "pasta"]):
-                base_score = 34
-                concerns.append("Refined maida block flash-fried in palm oil")
-            else:
-                base_score = 52
-                concerns.append("Industrial additives and refined processing")
-
-            base_score = max(10, min(100, base_score))
-            original_scores.append(base_score)
-
-            if base_score >= 75:
-                clean_count += 1
-                verdict = "SAFE FOR YOU"
-            elif base_score >= 45:
-                verdict = "CAUTION"
-            else:
-                verdict = "AVOID (VIOLATES PROFILE)"
-
-            # Determine food category and clean benchmark swap
-            category_key, benchmark = self._determine_category_and_benchmark(p_name)
-
-            # Try live TinyFish search for cleaner items at user's pincode
-            clean_alt_candidate = None
-            try:
-                # Search explicitly for clean organic items in this category on that store
-                clean_query = f"clean organic whole food {category_key} {store_name}"
-                live_alts = await tinyfish_service.find_pincode_alternatives(clean_query, pincode)
-                
-                # Filter out the same product or brand!
-                for cand in live_alts:
-                    cand_name = cand.get("name") or cand.get("product_name") or ""
-                    cand_score = int(cand.get("health_score", 85))
-                    
-                    if not self._is_same_product_or_brand(p_name, cand_name) and cand_score > base_score + 10:
-                        v_res = validate_and_clean_pdp_url(cand.get("direct_pdp_url") or "")
-                        clean_alt_candidate = HealthierAlternative(
-                            name=cand_name,
-                            product_name=cand.get("product_name") or cand_name,
-                            health_score=cand_score,
-                            key_benefit="100% whole grain, zero palm oil, zero chemical additives.",
-                            price_comparison="Comparable",
-                            personalized_fit="Safe and verified for your health profile.",
-                            direct_pdp_url=v_res.get("url") or cand.get("direct_pdp_url"),
-                            is_direct_pdp=v_res.get("is_pdp", True),
-                            pincode_available=True,
-                            type="CLEAN_COMMERCIAL",
-                            reason=f"Verified cleaner swap available on {store_name} at PIN {pincode}."
-                        )
-                        break
-            except Exception as e:
-                logger.warning(f"Live alternative search notice for {p_name}: {e}")
-
-            # If live search didn't return a verified non-identical swap, use benchmark clean swap
-            if not clean_alt_candidate:
-                v_res = validate_and_clean_pdp_url(benchmark["direct_pdp_url"])
-                clean_alt_candidate = HealthierAlternative(
-                    name=benchmark["name"],
-                    product_name=benchmark["product_name"],
-                    health_score=benchmark["health_score"],
-                    key_benefit=benchmark["key_benefit"],
-                    price_comparison="Comparable",
-                    personalized_fit="Fully aligned with your active health profile.",
-                    direct_pdp_url=v_res.get("url") or benchmark["direct_pdp_url"],
-                    is_direct_pdp=True,
-                    pincode_available=True,
-                    type="CLEAN_COMMERCIAL",
-                    reason=f"Verified clean swap on {store_name} at PIN {pincode}: {benchmark['reason']}"
-                )
-
-            swapped_scores.append(clean_alt_candidate.health_score)
-            red_flags_prevented += len(concerns)
-
-            audited_items.append(CartItemAudit(
-                product_name=p_name,
-                quantity=qty,
-                health_score=base_score,
-                personalized_verdict=verdict,
-                key_concerns=concerns,
-                cleaner_alternative=clean_alt_candidate
-            ))
+        original_scores = [item.health_score for item in audited_items]
+        swapped_scores = [
+            item.cleaner_alternative.health_score if item.cleaner_alternative else item.health_score
+            for item in audited_items
+        ]
+        clean_count = sum(1 for item in audited_items if item.health_score >= 75)
+        red_flags_prevented = sum(len(item.key_concerns) for item in audited_items)
 
         orig_avg = int(sum(original_scores) / max(1, len(original_scores)))
         swap_avg = int(sum(swapped_scores) / max(1, len(swapped_scores)))

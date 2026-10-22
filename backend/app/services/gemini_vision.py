@@ -46,9 +46,14 @@ AUDIT CRITERIA:
      * Dietary Restrictions (Vegan, Jain): Deduct -25 to -30 points and set "AVOID (VIOLATES PROFILE)" if animal fats or root vegetables are present.
      * Custom Avoid List: Deduct -15 to -25 points if item matches user's custom avoid list.
 
-5. Intelligent Holistic Health Scoring (0 to 100):
+5. Intelligent Holistic Health Scoring (0 to 100) & Whole-Food Sparing Rules (ICMR-NIN 2024 & FSSAI 2020):
    - Evaluate the overall nutritional reality, ingredient purity, and metabolic impact of the product.
    - Start from 100. Deduct points proportionally where the product is not superior or could be formulated cleaner.
+   - INTRINSIC NATURAL FATS & WHOLE-FOOD MATRIX RULE (MANDATORY):
+     * Pure whole foods (100% peanut butter, raw almonds, walnuts, seeds, A2 cow ghee, cold-pressed mustard/coconut/olive oils, pure natural cheese) naturally have high caloric and fat density. These are INTRINSIC, BENEFICIAL MACRONUTRIENTS.
+     * You MUST NOT penalize clean whole foods for high natural fats! Do NOT deduct 25-35 points for natural fat in pure peanut butter or cold-pressed oil. If the ingredient list is clean (single ingredient or minimal whole foods, zero palm oil, zero chemical additives), award scores between 88 and 98/100!
+     * Only penalize CHEAP INDUSTRIAL REFRACTIVE FATS: palm oil, palmolein, hydrogenated vegetable oil (vanaspati), and industrial trans fats (-15 to -25 points).
+     * Naturally occurring sodium in fermented foods, rock salt, or mineral seasonings should receive only modest, justifiable deductions, not massive point drops.
    - Deduct justifiable points if the product violates active health profile conditions as outlined in Section 4.
    - Minor additives in healthy individuals (e.g., trace salt, small citric acid) warrant minimal deductions (-2 to -4), but if the user specifically has acidity/GERD, apply the condition-specific acidity deduction (-8 to -15) as specified above.
    - Set "health_score" in the range 0 to 100 reflecting this clinical consensus.
