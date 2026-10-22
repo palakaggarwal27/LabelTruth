@@ -60,6 +60,16 @@ export const IngredientAccordion: React.FC<IngredientAccordionProps> = ({ ingred
           >
             Medium ({ingredients.filter((x) => x.concern_level === 'MEDIUM').length})
           </button>
+          <button
+            onClick={() => setFilter('LOW')}
+            className={`px-2.5 py-1 rounded-md border text-xs font-medium ${
+              filter === 'LOW'
+                ? 'bg-emerald-800 text-white border-emerald-800'
+                : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50'
+            }`}
+          >
+            Clean / Safe ({ingredients.filter((x) => x.concern_level === 'LOW').length})
+          </button>
         </div>
       </div>
 
@@ -77,7 +87,7 @@ export const IngredientAccordion: React.FC<IngredientAccordionProps> = ({ ingred
                       ? 'bg-rose-50 border-rose-200 text-rose-800 font-semibold'
                       : item.concern_level === 'MEDIUM'
                       ? 'bg-amber-50 border-amber-200 text-amber-800 font-semibold'
-                      : 'bg-zinc-50 border-zinc-200 text-zinc-600'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold'
                   }`}
                 >
                   {item.concern_level}

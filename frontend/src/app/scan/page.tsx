@@ -94,8 +94,9 @@ export default function ScanPage() {
       if (saved) {
         setHistory(JSON.parse(saved));
       }
+      localStorage.setItem('labeltruth_demo_presets', JSON.stringify(LOCAL_DEMO_TIER_PRODUCTS));
     } catch (e) {
-      console.warn('Failed to load scan history:', e);
+      console.warn('Failed to load scan history or save presets:', e);
     }
 
     if (typeof window !== 'undefined') {
@@ -176,9 +177,10 @@ export default function ScanPage() {
     setLoading(true);
     setError(null);
     const normalized = queryText.trim().toLowerCase();
+    const isUrl = normalized.startsWith('http://') || normalized.startsWith('https://');
 
-    // 1. Check offline demo suite if demo mode is enabled or product query matches a demo tier
-    if (demoMode || LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS]) {
+    // 1. Check offline demo suite if demo mode is enabled or product query matches a demo tier (never for live URLs)
+    if (!isUrl && (demoMode || LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS])) {
       let matchedKey: string | null = null;
 
       // Exact tier key match first
@@ -188,7 +190,7 @@ export default function ScanPage() {
         matchedKey = 'very_low';
       } else if (normalized.includes('english') || normalized.includes('bread') || normalized.includes('38')) {
         matchedKey = 'low';
-      } else if (normalized.includes('dlecta') || normalized.includes("d'lecta") || normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('58')) {
+      } else if (normalized.includes('dlecta') || normalized.includes("d'lecta") || normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('74')) {
         matchedKey = 'moderate';
       } else if (normalized.includes('epigamia') || normalized.includes('yogurt') || normalized.includes('greek') || normalized.includes('78')) {
         matchedKey = 'high';
@@ -210,7 +212,7 @@ export default function ScanPage() {
     const cachedItem = history.find(
       (h) => h.result.product_name.trim().toLowerCase() === normalized
     );
-    if (cachedItem) {
+    if (cachedItem && !isUrl) {
       const scanTime = Number(cachedItem.timestamp || 0);
       const isExpired = isNaN(scanTime) || scanTime <= 0 || (Date.now() - scanTime > THIRTY_DAYS_MS);
       if (!isExpired) {
@@ -221,25 +223,24 @@ export default function ScanPage() {
     }
 
     try {
-      const data = await smartScan({ query: queryText, pincode: pincode || '110001', demoMode }, currentProfile);
+      const data = await smartScan({ query: queryText, pincode: pincode || '110001', demoMode: isUrl ? false : demoMode }, currentProfile);
       setResult(data);
       saveToHistory(data);
     } catch (err: unknown) {
       console.warn('Backend query error, checking local preset catalog:', err);
-      // Check if user queried one of our exact demo products or related keywords
-      const matched = FALLBACK_PRESET_PRODUCTS.find((p) => {
-        const pTitle = p.title.toLowerCase();
-        const pSub = p.subtitle.toLowerCase();
-        const pProd = p.sample_result.product_name.toLowerCase();
-        return pTitle.includes(normalized) ||
-               pProd.includes(normalized) ||
-               normalized.split(" ").some((w) => w.length > 3 && (pTitle.includes(w) || pProd.includes(w) || pSub.includes(w)));
-      });
+      // Check if user queried one of our exact demo products by exact name (never for URLs)
+      if (!isUrl) {
+        const matched = FALLBACK_PRESET_PRODUCTS.find((p) => {
+          const pTitle = p.title.toLowerCase();
+          const pProd = p.sample_result.product_name.toLowerCase();
+          return pTitle === normalized || pProd === normalized;
+        });
 
-      if (matched) {
-        setResult(matched.sample_result);
-        saveToHistory(matched.sample_result);
-        return;
+        if (matched) {
+          setResult(matched.sample_result);
+          saveToHistory(matched.sample_result);
+          return;
+        }
       }
 
       const errorObj = err as { response?: { data?: { detail?: string } } };

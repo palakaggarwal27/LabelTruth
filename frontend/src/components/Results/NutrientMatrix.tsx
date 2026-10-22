@@ -77,23 +77,45 @@ export const NutrientMatrix: React.FC<NutrientMatrixProps> = ({ matrix, nutritio
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {nutritionCard.breakdown.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-zinc-50/60">
-                      <td className="py-2 px-3 font-medium text-zinc-900">{row.nutrient}</td>
-                      <td className="py-2 px-3 font-mono text-zinc-700">{row.amount_per_100g}</td>
-                      <td className="py-2 px-3 font-mono text-zinc-500">{row.daily_value_percent || '—'}</td>
-                      <td className="py-2 px-3 text-[11px] text-zinc-600 font-light flex items-center gap-1.5">
-                        {row.clinical_evaluation ? (
-                          <>
-                            <ShieldAlert className="w-3 h-3 text-amber-600 shrink-0" />
-                            <span>{row.clinical_evaluation}</span>
-                          </>
-                        ) : (
-                          <span>Within normal standard range</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {nutritionCard.breakdown.map((row, idx) => {
+                    const text = row.clinical_evaluation || '';
+                    const lower = text.toLowerCase();
+                    const isDanger = lower.includes('exceed') || lower.includes('very high') || lower.includes('dramatically') || lower.includes('hyper') || lower.includes('extreme') || lower.includes('excessive') || lower.includes('stripped') || lower.includes('cheap');
+                    const isPositive = !isDanger && (lower.includes('zero') || lower.includes('clean') || lower.includes('wholesome') || lower.includes('bioavailable') || lower.includes('protective') || lower.includes('pure') || lower.includes('natural') || lower.includes('rich in') || lower.includes('balanced') || lower.includes('safe') || lower.includes('optimal') || lower.includes('within normal') || lower.includes('standard range') || (!lower.includes('high') && !lower.includes('elevated') && !lower.includes('moderate')));
+
+                    return (
+                      <tr key={idx} className="hover:bg-zinc-50/60">
+                        <td className="py-2 px-3 font-medium text-zinc-900">{row.nutrient}</td>
+                        <td className="py-2 px-3 font-mono text-zinc-700">{row.amount_per_100g}</td>
+                        <td className="py-2 px-3 font-mono text-zinc-500">{row.daily_value_percent || '—'}</td>
+                        <td className="py-2 px-3 text-[11px] font-light flex items-center gap-1.5">
+                          {text ? (
+                            isPositive ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="text-emerald-800 font-medium">{text}</span>
+                              </>
+                            ) : isDanger ? (
+                              <>
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                <span className="text-rose-800 font-medium">{text}</span>
+                              </>
+                            ) : (
+                              <>
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <span className="text-amber-800 font-medium">{text}</span>
+                              </>
+                            )
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="text-emerald-700">Within normal standard range</span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

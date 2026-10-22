@@ -3,6 +3,8 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, Camera } from 'lucide-react';
 
+import { reverseGeocodePincode } from '@/lib/api';
+
 interface UploadZoneProps {
   onFileSelect: (file: File) => void;
   onOpenLiveCamera?: () => void;
@@ -62,12 +64,21 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
     } catch {
       // ignore
     }
-    handleDetectLocation();
+    handleDetectLocation(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleDetectLocation = () => {
+  const handleDetectLocation = (forceFresh: boolean = false) => {
     setDetectingLoc(true);
+
+    if (forceFresh) {
+      try {
+        sessionStorage.removeItem('labeltruth_user_pincode');
+        localStorage.removeItem('labeltruth_user_pincode');
+      } catch {
+        // ignore
+      }
+    }
 
     const tryIpFallback = async () => {
       try {
@@ -97,7 +108,18 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
 
-          // 1. High-precision OpenStreetMap Nominatim at street zoom level (zoom 18)
+          // 1. High-precision server-side reverse geocoding via Nominatim with User-Agent
+          try {
+            const serverPin = await reverseGeocodePincode(lat, lon);
+            if (serverPin && /^[1-9][0-9]{5}$/.test(serverPin)) {
+              savePincode(serverPin);
+              return;
+            }
+          } catch (serverErr) {
+            console.warn("Server reverse geocode notice:", serverErr);
+          }
+
+          // 2. OpenStreetMap Nominatim client fallback
           try {
             const osmRes = await fetch(
               `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&format=json&addressdetails=1`,
@@ -117,7 +139,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
             console.warn("Nominatim reverse geocode notice:", osmErr);
           }
 
-          // 2. BigDataCloud reverse geocode client (specialized in client coordinates)
+          // 3. BigDataCloud reverse geocode client
           try {
             const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
             if (res.ok) {
@@ -145,7 +167,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
         await tryIpFallback();
         setDetectingLoc(false);
       },
-      { timeout: 12000, enableHighAccuracy: true, maximumAge: 60000 }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: forceFresh ? 0 : 60000 }
     );
   };
 
@@ -178,7 +200,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
               />
               <button
                 type="button"
-                onClick={handleDetectLocation}
+                onClick={() => handleDetectLocation(true)}
                 disabled={detectingLoc}
                 className="px-2 py-0.5 bg-zinc-200 hover:bg-zinc-300 rounded text-[11px] font-medium transition-colors"
                 title="Detect current location pincode"

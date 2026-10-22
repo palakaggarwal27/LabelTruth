@@ -127,3 +127,13 @@ export const auditCart = async (
   });
   return res.data;
 };
+
+export const reverseGeocodePincode = async (lat: number, lon: number): Promise<string | null> => {
+  try {
+    const res = await apiClient.get<{ pincode: string | null; formatted_address?: string }>(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
+    return res.data?.pincode || null;
+  } catch (e) {
+    console.warn("Backend reverse geocode request failed:", e);
+    return null;
+  }
+};

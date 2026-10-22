@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { auditCart } from '@/lib/api';
+import { auditCart, reverseGeocodePincode } from '@/lib/api';
 import { CartAuditResponse } from '@/types';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { 
@@ -53,7 +53,7 @@ export const CartAuditView: React.FC = () => {
     } catch {
       // ignore
     }
-    handleDetectLocation();
+    handleDetectLocation(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -80,8 +80,17 @@ export const CartAuditView: React.FC = () => {
     };
   }, [loading]);
 
-  const handleDetectLocation = () => {
+  const handleDetectLocation = (forceFresh: boolean = false) => {
     setDetectingLoc(true);
+
+    if (forceFresh) {
+      try {
+        sessionStorage.removeItem('labeltruth_user_pincode');
+        localStorage.removeItem('labeltruth_user_pincode');
+      } catch {
+        // ignore
+      }
+    }
 
     const tryIpFallback = async () => {
       try {
@@ -111,7 +120,18 @@ export const CartAuditView: React.FC = () => {
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
 
-          // 1. High precision Nominatim with street level zoom 18
+          // 1. High precision server-side reverse geocoding via Nominatim with User-Agent
+          try {
+            const serverPin = await reverseGeocodePincode(lat, lon);
+            if (serverPin && /^[1-9][0-9]{5}$/.test(serverPin)) {
+              savePincode(serverPin);
+              return;
+            }
+          } catch (serverErr) {
+            console.warn("Server reverse geocode notice:", serverErr);
+          }
+
+          // 2. High precision Nominatim with street level zoom 18
           try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&format=json&addressdetails=1`);
             if (res.ok) {
@@ -127,7 +147,7 @@ export const CartAuditView: React.FC = () => {
             console.warn("Nominatim reverse geocode notice:", osmErr);
           }
 
-          // 2. BigDataCloud reverse geocode client
+          // 3. BigDataCloud reverse geocode client
           try {
             const bdcRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
             if (bdcRes.ok) {
@@ -155,7 +175,7 @@ export const CartAuditView: React.FC = () => {
         await tryIpFallback();
         setDetectingLoc(false);
       },
-      { timeout: 12000, enableHighAccuracy: true, maximumAge: 60000 }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: forceFresh ? 0 : 60000 }
     );
   };
 
@@ -264,7 +284,7 @@ export const CartAuditView: React.FC = () => {
                 />
                 <button
                   type="button"
-                  onClick={handleDetectLocation}
+                  onClick={() => handleDetectLocation(true)}
                   disabled={detectingLoc}
                   className="px-2.5 py-1 bg-zinc-200 hover:bg-zinc-300 rounded text-xs font-medium transition-colors"
                 >

@@ -192,81 +192,78 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
 
   moderate: {
     product_name: "D'lecta Mozzarella Cheese Block",
-    health_score: 58,
-    personalized_verdict: "CAUTION",
-    simple_summary: "Commercial processed cheese block with 18g saturated fat per 100g, sodium 650mg, and chemical emulsifiers (INS 331, INS 452).",
-    deceptive_claims_flagged: [
-      "Good Source of Calcium (Downplays 18g Saturated Fat and chemical phosphates)"
-    ],
-    fssai_violations: [
-      "FSSAI Regulation 2.1.1: Uses emulsifying salts without bold front-of-pack sodium alert."
-    ],
+    health_score: 74,
+    personalized_verdict: "SAFE FOR YOU",
+    simple_summary: "Authentic cow milk mozzarella with 24g bioavailable protein (PDCAAS 1.0) and zero chemical emulsifiers or artificial preservatives. Contains natural dairy fat (20.5g) and moderate sodium (640mg).",
+    deceptive_claims_flagged: [],
+    fssai_violations: [],
     ingredient_breakdown: [
-      { ingredient: "Pasteurized Cow Milk", purpose: "Dairy base", concern_level: "LOW", personalized_warning: "" },
-      { ingredient: "Common Salt (Sodium 650mg)", purpose: "Preservative/flavor", concern_level: "HIGH", personalized_warning: "Elevates blood pressure; fluid retention risk." },
-      { ingredient: "Emulsifiers (INS 331, INS 452)", purpose: "Melting stabilizer", concern_level: "MEDIUM", personalized_warning: "Phosphate additives linked to arterial calcification." },
-      { ingredient: "Microbial Rennet", purpose: "Coagulant", concern_level: "LOW", personalized_warning: "" }
+      { ingredient: "Pasteurised Cow Milk & Skimmed Milk", purpose: "Dairy base", concern_level: "LOW", personalized_warning: "Whole-food protein & calcium source." },
+      { ingredient: "Iodised Salt (Sodium 640mg)", purpose: "Seasoning & preservation", concern_level: "LOW", personalized_warning: "Moderate sodium; monitor intake if managing hypertension." },
+      { ingredient: "Firming Agent (INS 509 - Calcium Chloride)", purpose: "Natural mineral firming agent", concern_level: "LOW", personalized_warning: "Safe mineral firming salt." },
+      { ingredient: "Microbial Cultures & Vegetarian Rennet", purpose: "Fermentation & coagulation", concern_level: "LOW", personalized_warning: "Safe vegetarian cultures." }
     ],
     nutrition_card: {
       serving_size: "100g",
-      calories_kcal: 310.0,
-      total_fat_g: 24.0,
-      saturated_fat_g: 18.0,
-      trans_fat_g: 0.5,
-      total_carbs_g: 2.5,
+      calories_kcal: 284.0,
+      total_fat_g: 20.5,
+      saturated_fat_g: 12.9,
+      trans_fat_g: 0.7,
+      total_carbs_g: 0.5,
       added_sugars_g: 0.0,
-      sodium_mg: 650.0,
+      sodium_mg: 640.0,
       breakdown: [
-        { nutrient: "Saturated Fat", amount_per_100g: "18.0g", daily_value_percent: "82%", clinical_evaluation: "Very high saturated fat; exceeds recommended allowance." },
-        { nutrient: "Sodium", amount_per_100g: "650mg", daily_value_percent: "33%", clinical_evaluation: "Elevated sodium." },
-        { nutrient: "Protein", amount_per_100g: "22.0g", daily_value_percent: "44%", clinical_evaluation: "High milk protein with high bioavailability." }
+        { nutrient: "Protein", amount_per_100g: "24.0g", daily_value_percent: "48%", clinical_evaluation: "High bioavailable dairy protein (PDCAAS 1.0)" },
+        { nutrient: "Added Sugar", amount_per_100g: "0.0g", daily_value_percent: "0%", clinical_evaluation: "Zero added sugar" },
+        { nutrient: "Saturated Fat", amount_per_100g: "12.9g", daily_value_percent: "59%", clinical_evaluation: "Intrinsic dairy fat; moderate density" },
+        { nutrient: "Sodium", amount_per_100g: "640mg", daily_value_percent: "32%", clinical_evaluation: "Moderate sodium; monitor if on low-salt diet" }
       ]
     },
     nutrient_integrity: {
       protein: {
-        declared_protein_g: 22.0,
-        usable_protein_g: 22.0,
+        declared_protein_g: 24.0,
+        usable_protein_g: 24.0,
         pdcaas_score: 1.0,
         primary_sources: ["Pasteurized Cow Milk"],
-        protein_to_calorie_percent: 28.3,
+        protein_to_calorie_percent: 33.8,
         amino_spiking_risk: false
       },
       fiber_type: "None",
       palm_oil_present: false,
       hidden_sugars_flagged: [],
-      sodium_and_preservatives_risk: "Moderate",
+      sodium_and_preservatives_risk: "Low",
       claims_matrix: [
-        { claim: "High Protein Dairy", status: "VERIFIED", explanation: "Protein is authentic, but accompanied by 18g saturated fat." }
+        { claim: "100% Pure Cow Milk Mozzarella", status: "VERIFIED", explanation: "Pure dairy ingredients without vegetable oil substitutes or emulsifying salts." }
       ]
     },
     healthier_alternative: {
-      name: "Organic A2 Gir Cow Artisanal Paneer",
-      product_name: "Organic A2 Gir Cow Paneer",
-      health_score: 88,
-      key_benefit: "Zero emulsifying salts (INS 331/452), zero synthetic preservatives, 18g bioavailable protein",
-      price_comparison: "~1.3x (₹140/200g)",
-      personalized_fit: "Unprocessed whole dairy with easy-to-digest A2 beta-casein",
+      name: "Akshayakalpa Organic Artisan Mozzarella / Paneer",
+      product_name: "Akshayakalpa Organic Artisan Mozzarella",
+      health_score: 93,
+      key_benefit: "100% certified organic A2 whole milk, low sodium 120mg, zero preservatives",
+      price_comparison: "~1.2x (₹140/200g)",
+      personalized_fit: "Unprocessed organic A2 dairy",
       type: "CLEAN_COMMERCIAL",
-      delta_vs_scanned: "+30 pts",
-      direct_pdp_url: "https://www.blinkit.com/s/?q=Organic+Paneer",
+      delta_vs_scanned: "+19 pts",
+      direct_pdp_url: "https://www.zepto.com/pn/akshayakalpa-artisan-organic-cheese/pvid/akshaya-ch-1",
       is_direct_pdp: true,
       pincode_available: true,
-      reason: "Pure curdled A2 whole milk without chemical stabilizers."
+      reason: "Pure curdled organic A2 whole milk with low sodium density."
     },
     clean_alternatives: [
       {
-        name: "Organic A2 Gir Cow Artisanal Paneer",
-        product_name: "Organic A2 Gir Cow Paneer",
-        health_score: 88,
-        key_benefit: "Zero chemical emulsifiers, zero preservatives",
-        price_comparison: "~1.3x",
-        personalized_fit: "Clean unprocessed dairy",
+        name: "Akshayakalpa Organic Artisan Mozzarella / Paneer",
+        product_name: "Akshayakalpa Organic Artisan Mozzarella",
+        health_score: 93,
+        key_benefit: "100% certified organic A2 whole milk, low sodium 120mg, zero preservatives",
+        price_comparison: "~1.2x",
+        personalized_fit: "Unprocessed organic A2 dairy",
         type: "CLEAN_COMMERCIAL",
-        delta_vs_scanned: "+30 pts",
-        direct_pdp_url: "https://www.zepto.com/pn/organic-a2-paneer/pvid/33445566",
+        delta_vs_scanned: "+19 pts",
+        direct_pdp_url: "https://www.zepto.com/pn/akshayakalpa-artisan-organic-cheese/pvid/akshaya-ch-1",
         is_direct_pdp: true,
         pincode_available: true,
-        reason: "100% natural A2 dairy, zero chemical salts."
+        reason: "Pure curdled organic A2 whole milk with low sodium density."
       },
       {
         name: "Homemade Fresh Stretched Mozzarella / Hung Curd",
@@ -274,13 +271,13 @@ export const LOCAL_DEMO_TIER_PRODUCTS: Record<string, LabelAnalysisResult> = {
         health_score: 92,
         key_benefit: "100% fresh whole milk, zero emulsifiers, zero added sodium",
         price_comparison: "Inexpensive (~₹50)",
-        personalized_fit: "Eliminates all industrial phosphates",
+        personalized_fit: "Pure fresh homemade dairy without commercial salts",
         type: "HOMEMADE_RECIPE",
-        delta_vs_scanned: "+34 pts",
+        delta_vs_scanned: "+18 pts",
         recipe_url: "https://www.youtube.com/results?search_query=how+to+make+fresh+mozzarella+at+home+healthy",
         is_direct_pdp: false,
         pincode_available: true,
-        reason: "100% natural, zero emulsifiers (INS 331/452), zero synthetic preservatives."
+        reason: "100% natural, zero emulsifiers, zero synthetic preservatives."
       }
     ],
     is_food_label: true,

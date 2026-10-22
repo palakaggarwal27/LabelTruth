@@ -17,10 +17,10 @@ PRESET_PRODUCTS = [
         "sample_result": DEMO_TIER_PRODUCTS["low"]
     },
     {
-        "id": "cheese-58",
-        "title": "D'lecta Mozzarella Processed Cheese",
-        "subtitle": "Processed Dairy Block · Chemical Emulsifiers",
-        "description": "Commercial processed cheese block carrying 18g saturated fat per 100g and synthetic phosphate emulsifying salts (INS 331, INS 452).",
+        "id": "cheese-74",
+        "title": "D'lecta Mozzarella Cheese Block",
+        "subtitle": "Natural Cow Milk Cheese · 24g Protein",
+        "description": "Authentic cow milk mozzarella with 24g bioavailable protein (PDCAAS 1.0) and zero chemical emulsifiers or artificial preservatives. Natural dairy fat and moderate sodium (640mg).",
         "sample_result": DEMO_TIER_PRODUCTS["moderate"]
     },
     {

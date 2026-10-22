@@ -211,8 +211,11 @@ async def smart_scan(
 
     delivery_pincode = pincode or "110001"
 
+    is_url_input = bool(query and (query.strip().startswith("http://") or query.strip().startswith("https://")))
+
     # Module 4: Offline DEMO_MODE Sandbox Suite (<100ms instant deterministic data)
-    if demo_mode:
+    # Never apply demo sandbox to live URLs
+    if demo_mode and not is_url_input:
         q_lower = (query or "").lower()
         if any(w in q_lower for w in ["chip", "lays", "bingo", "masala", "18"]):
             tier_key = "very_low"
@@ -232,6 +235,7 @@ async def smart_scan(
         eval_res = evaluate_profile_safety_offline(demo_res, profile)
         demo_res.personalized_verdict = eval_res["personalized_verdict"]
         return demo_res
+
 
     try:
         # Scenario 1: Image provided
@@ -396,3 +400,56 @@ async def audit_cart_endpoint(
     except Exception as e:
         logger.error(f"Cart audit error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to audit cart: {str(e)}")
+
+@app.get('/api/reverse-geocode')
+async def reverse_geocode_endpoint(lat: float, lon: float):
+    """
+    High-precision server-side reverse geocode via Nominatim with proper User-Agent header.
+    Extracts authentic 6-digit Indian postal code (PIN) directly from latitude & longitude coordinates.
+    """
+    import httpx
+    headers = {
+        "User-Agent": "LabelTruthClinicalApp/1.0 (https://labeltruth.org; contact@labeltruth.org)",
+        "Accept": "application/json"
+    }
+    url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lon}&zoom=18&format=json&addressdetails=1"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            res = await client.get(url, headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                addr = data.get("address", {})
+                pin = addr.get("postcode") or addr.get("postal_code") or ""
+                match = re.search(r'\b([1-9][0-9]{5})\b', str(pin))
+                locality = addr.get("suburb") or addr.get("neighbourhood") or addr.get("city") or addr.get("town") or addr.get("county") or ""
+                if match:
+                    return {
+                        "pincode": match.group(1),
+                        "locality": locality,
+                        "state": addr.get("state", ""),
+                        "display_name": data.get("display_name", "")
+                    }
+    except Exception as e:
+        logger.warning(f"Nominatim server reverse geocode notice: {e}")
+
+    # Fallback to BigDataCloud
+    try:
+        bdc_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=en"
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            res = await client.get(bdc_url)
+            if res.status_code == 200:
+                data = res.json()
+                pin = data.get("postcode") or data.get("postCode") or ""
+                match = re.search(r'\b([1-9][0-9]{5})\b', str(pin))
+                if match:
+                    return {
+                        "pincode": match.group(1),
+                        "locality": data.get("locality") or data.get("city") or "",
+                        "state": data.get("principalSubdivision", ""),
+                        "display_name": data.get("locality", "")
+                    }
+    except Exception as bdc_err:
+        logger.warning(f"BigDataCloud server reverse geocode notice: {bdc_err}")
+
+    return {"pincode": None, "locality": None, "state": None}
+

@@ -1,23 +1,40 @@
 def extract_product_name_from_url(url: str) -> str:
-    """Extract clean readable product title from quick-commerce and ecommerce URL slugs"""
+    """Extract clean readable product title from quick-commerce and ecommerce URL slugs and query parameters"""
     import re
-    from urllib.parse import urlparse, unquote
+    from urllib.parse import urlparse, parse_qs, unquote
 
     parsed = urlparse(url)
     path = unquote(parsed.path)
 
-    match = re.search(r'/(?:pn|prn|pd|product|item)/([^/?#]+)', path)
-    slug = match.group(1) if match else ""
+    # 1. Check query parameters first if query is a search/item link (e.g. ?q=... or ?item=... or ?title=...)
+    qs = parse_qs(parsed.query)
+    for q_key in ['item', 'product', 'title', 'q', 'query', 'name', 'items']:
+        if q_key in qs and qs[q_key]:
+            val = qs[q_key][0]
+            clean_q = re.sub(r'[-_+]+', ' ', val)
+            clean_q = re.sub(r'[^a-zA-Z0-9 ]+', '', clean_q).strip()
+            if len(clean_q) > 3 and not clean_q.isdigit():
+                return clean_q.title()
+
+    # 2. Extract path segments, skipping purely numeric product/category IDs
+    segments = [s for s in path.split('/') if s]
+    meaningful_segments = [s for s in segments if not s.isdigit() and len(s) > 3 and s.lower() not in ['pn', 'prn', 'pd', 'product', 'item', 'items', 'pvid', 'prid', 'dp', 'gp', 'cart', 'checkout']]
+
+    slug = ""
+    # BigBasket style: /pd/10000456/amul-butter-pasteurised-500-g-carton/
+    if meaningful_segments:
+        # Take the most descriptive slug (usually the longest or last meaningful segment)
+        slug = max(meaningful_segments, key=len)
 
     if not slug:
-        segments = [s for s in path.split('/') if s and not s.isdigit() and len(s) > 3]
-        if segments:
-            slug = segments[-1]
+        match = re.search(r'/(?:pn|prn|pd|product|item)/([^/?#]+)', path)
+        slug = match.group(1) if match else ""
 
     clean = re.sub(r'[-_]+', ' ', slug)
-    clean = re.sub(r'\b(pvid|prid|pid|id|dp|ref)\b.*', '', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(pvid|prid|pid|id|dp|ref|carton|pack)\b.*', '', clean, flags=re.IGNORECASE)
     clean = re.sub(r'[^a-zA-Z0-9 ]+', '', clean).strip()
-    return clean.title() if len(clean) > 3 else ""
+    return clean.title() if len(clean) > 3 and not clean.isdigit() else ""
+
 
 def is_waf_block_content(content: str) -> bool:
     """Detect if fetched content is an anti-bot Cloudflare / WAF block page"""

@@ -309,10 +309,10 @@ def test_demo_mode_5_tiers():
     assert r2.status_code == 200
     assert r2.json()["health_score"] == 38
 
-    # 3. Moderate (58)
+    # 3. Moderate (74 - authentic pure cow milk mozzarella)
     r3 = client.post("/api/smart-scan", data={"query": "d'lecta cheese 58", "demo_mode": "true", "user_profile": json.dumps({})})
     assert r3.status_code == 200
-    assert r3.json()["health_score"] == 58
+    assert r3.json()["health_score"] == 74
 
     # 4. High (78)
     r4 = client.post("/api/smart-scan", data={"query": "greek yogurt 78", "demo_mode": "true", "user_profile": json.dumps({})})

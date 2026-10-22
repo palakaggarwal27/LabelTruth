@@ -95,17 +95,17 @@ def apply_delta_audit_hierarchy(
             highest_commercial_score = c_score
             best_commercial = cand
 
-    # Tier 2: If no commercial option achieved >= 70, return best available with explicit warning
+    # Tier 2: If no commercial option achieved >= 70, return best available only if it beats scanned product
     tier2_alts = []
-    if not clean_tier1 and best_commercial:
+    if not clean_tier1 and best_commercial and highest_commercial_score > scanned_health_score:
         delta = highest_commercial_score - scanned_health_score
         tier2_alts.append(HealthierAlternative(
             name=best_commercial.get("name") or best_commercial.get("product_name"),
             product_name=best_commercial.get("product_name") or best_commercial.get("name"),
             health_score=highest_commercial_score,
             type="BEST_COMMERCIAL_AVAILABLE",
-            delta_vs_scanned=f"+{delta} pts" if delta > 0 else f"{delta} pts",
-            warning_tag=f"⚠️ Best packaged option in this store category, but scored {highest_commercial_score}/100 and may still contain high sodium or saturated fat.",
+            delta_vs_scanned=f"+{delta} pts",
+            warning_tag=f"⚠️ Best packaged option in this store category ({highest_commercial_score}/100). Use in moderation.",
             direct_pdp_url=best_commercial.get("direct_pdp_url"),
             is_direct_pdp=bool(best_commercial.get("is_direct_pdp", False)),
             store_url=best_commercial.get("direct_pdp_url"),
@@ -113,31 +113,56 @@ def apply_delta_audit_hierarchy(
             reason=best_commercial.get("reason", "Highest scoring packaged alternative in category."),
             key_benefit=best_commercial.get("key_benefit", "Better than scanned product"),
             price_comparison="Comparable",
-            personalized_fit="Use in moderation."
+            personalized_fit="Cleaner profile than scanned product."
         ))
 
-    # Tier 3: Whole-Food Recipe Swap + verified YouTube search link
+    # Tier 3: Whole-Food Recipe Swap + verified YouTube search link (only if it beats scanned product)
     query_topic = category_hint or scanned_product_name
     encoded_query = urllib.parse.quote_plus(f"how to make fresh {query_topic} at home healthy unprocessed")
     youtube_url = f"https://www.youtube.com/results?search_query={encoded_query}"
 
     recipe_title = f"Homemade Unprocessed Fresh {query_topic.title()} Recipe"
-    tier3_recipe = HealthierAlternative(
-        name=recipe_title,
-        product_name=recipe_title,
-        health_score=92,
-        type="HOMEMADE_RECIPE",
-        delta_vs_scanned=f"+{92 - scanned_health_score} pts",
-        recipe_url=youtube_url,
-        is_direct_pdp=False,
-        pincode_available=True,
-        reason="100% natural whole ingredients, zero emulsifiers (INS 331/452), zero synthetic preservatives.",
-        key_benefit="Zero industrial additives, complete ingredient transparency.",
-        price_comparison="Inexpensive",
-        personalized_fit="Eliminates all industrial seed oils and synthetic additives."
-    )
+    tier3_recipe = None
+    if 92 > scanned_health_score:
+        tier3_recipe = HealthierAlternative(
+            name=recipe_title,
+            product_name=recipe_title,
+            health_score=92,
+            type="HOMEMADE_RECIPE",
+            delta_vs_scanned=f"+{92 - scanned_health_score} pts",
+            recipe_url=youtube_url,
+            is_direct_pdp=False,
+            pincode_available=True,
+            reason="100% natural whole ingredients, zero emulsifiers, zero synthetic preservatives.",
+            key_benefit="Zero industrial additives, complete ingredient transparency.",
+            price_comparison="Inexpensive",
+            personalized_fit="Eliminates all industrial seed oils and synthetic additives."
+        )
 
     final_list = clean_tier1 if clean_tier1 else tier2_alts
-    # Always include Tier 3 recipe swap for comprehensive consumer empowerment
-    final_list.append(tier3_recipe)
-    return final_list
+    if tier3_recipe:
+        final_list.append(tier3_recipe)
+
+    # Strictly filter out ANY alternative whose health_score is <= scanned_health_score
+    filtered_list = [alt for alt in final_list if alt.health_score > scanned_health_score]
+
+    if not filtered_list:
+        return [
+            HealthierAlternative(
+                name=f"{scanned_product_name} (Top Tier Choice)",
+                product_name=scanned_product_name,
+                health_score=scanned_health_score,
+                type="CLEAN_COMMERCIAL",
+                delta_vs_scanned="Current Product",
+                warning_tag="",
+                is_direct_pdp=False,
+                pincode_available=True,
+                reason="🏆 Cleanest available choice in this category. No higher-scoring alternatives exist in dark-store inventory.",
+                key_benefit="Top nutritional integrity in this category.",
+                price_comparison="Current Product",
+                personalized_fit="Optimal formulation alignment."
+            )
+        ]
+
+    return filtered_list
+
