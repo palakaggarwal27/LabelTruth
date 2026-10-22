@@ -407,10 +407,10 @@ def test_audit_cart_endpoint():
     assert "items" in data
     assert len(data["items"]) > 0
     first_item = data["items"][0]
-    # Verify that the clean swap is NOT the same product as the original
+    # Verify that the clean swap is NOT the same product or brand as the original
     assert first_item["cleaner_alternative"] is not None
     assert first_item["cleaner_alternative"]["name"] != first_item["product_name"]
-    assert "bhujia" not in first_item["cleaner_alternative"]["name"].lower()
+    assert "haldiram" not in first_item["cleaner_alternative"]["name"].lower()
     assert first_item["cleaner_alternative"]["health_score"] > first_item["health_score"]
 
 def test_whole_food_natural_fat_scoring():

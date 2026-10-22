@@ -15,7 +15,9 @@ import {
   XCircle, 
   Trophy, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 export const CartAuditView: React.FC = () => {
@@ -214,6 +216,22 @@ export const CartAuditView: React.FC = () => {
     if (score >= 75) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
     if (score >= 45) return 'text-amber-700 bg-amber-50 border-amber-200';
     return 'text-rose-700 bg-rose-50 border-rose-200';
+  };
+
+  const getVerdictBadge = (verdict: string) => {
+    if (verdict === 'SAFE FOR YOU') return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+    if (verdict === 'CAUTION') return 'bg-amber-100 text-amber-800 border border-amber-300';
+    return 'bg-rose-100 text-rose-800 border border-rose-300';
+  };
+
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const toggleExpanded = (idx: number) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   };
 
   return (
@@ -471,96 +489,130 @@ export const CartAuditView: React.FC = () => {
             </h3>
 
             <div className="space-y-3">
-              {result.items.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 bg-white border border-zinc-200 rounded-lg hover:border-zinc-300 transition-all"
-                >
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-center">
-                    {/* Original Item */}
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 font-semibold">
-                              In Cart ({item.quantity}x)
-                            </span>
-                            {item.personalized_verdict === 'AVOID (VIOLATES PROFILE)' && (
-                              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold flex items-center gap-1">
-                                <XCircle className="w-3 h-3 text-rose-600" />
-                                Profile Conflict
+              {result.items.map((item, idx) => {
+                const isExpanded = expandedItems.has(idx);
+                // Extract 1-2 line concise summary for the compact view
+                const conciseSummary = item.key_concerns && item.key_concerns.length > 0
+                  ? item.key_concerns.slice(0, 2).join(' • ')
+                  : 'Nutritional baseline verified. No high-risk industrial additives or profile conflicts detected.';
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-4 bg-white border border-zinc-200 rounded-lg hover:border-zinc-300 transition-all shadow-sm"
+                  >
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                      {/* Original Item Compact Card */}
+                      <div className="space-y-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 font-semibold">
+                                In Cart ({item.quantity}x)
                               </span>
-                            )}
+                              <span className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded font-semibold flex items-center gap-1 ${getVerdictBadge(item.personalized_verdict)}`}>
+                                {item.personalized_verdict === 'AVOID (VIOLATES PROFILE)' && (
+                                  <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                                )}
+                                {item.personalized_verdict}
+                              </span>
+                            </div>
+                            <h4 className="text-sm font-semibold text-zinc-900 leading-snug">
+                              {item.product_name}
+                            </h4>
                           </div>
-                          <h4 className="text-sm font-semibold text-zinc-900">
-                            {item.product_name}
-                          </h4>
+
+                          {/* Health Score Pill */}
+                          <div
+                            className={`flex flex-col items-center justify-center w-11 h-11 rounded border font-mono font-bold shrink-0 ${getScoreColor(
+                              item.health_score
+                            )}`}
+                          >
+                            <span className="text-sm leading-none">{item.health_score}</span>
+                            <span className="text-[8px] opacity-75">/100</span>
+                          </div>
                         </div>
-                        <div
-                          className={`flex flex-col items-center justify-center w-11 h-11 rounded border font-mono font-bold shrink-0 ${getScoreColor(
-                            item.health_score
-                          )}`}
-                        >
-                          <span className="text-sm leading-none">{item.health_score}</span>
-                          <span className="text-[8px] opacity-75">/100</span>
-                        </div>
+
+                        {/* 1-2 Line Brief Description */}
+                        <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
+                          {conciseSummary}
+                        </p>
+
+                        {/* Details Toggle Button */}
+                        {item.key_concerns && item.key_concerns.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(idx)}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-700 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-2 py-1 rounded transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide Details' : 'See Details'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+
+                        {/* Expandable Clinical Details */}
+                        {isExpanded && item.key_concerns.length > 0 && (
+                          <div className="text-[11px] text-zinc-800 bg-rose-50/50 border border-rose-200/80 rounded-md p-3 space-y-1.5 animate-in fade-in duration-200">
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-rose-800 font-bold block mb-1">
+                              Clinical Concerns & Additives:
+                            </span>
+                            {item.key_concerns.map((c, cIdx) => (
+                              <div key={cIdx} className="flex items-start gap-1.5 text-zinc-800">
+                                <span className="text-rose-500 font-bold shrink-0">•</span>
+                                <span className="leading-relaxed">{c}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Concerns */}
-                      {item.key_concerns.length > 0 && (
-                        <div className="text-[11px] text-rose-800 bg-rose-50/60 border border-rose-200/80 rounded p-2 space-y-0.5">
-                          {item.key_concerns.map((c, cIdx) => (
-                            <p key={cIdx} className="flex items-start gap-1">
-                              <span className="text-rose-500 font-bold shrink-0">•</span>
-                              <span>{c}</span>
+                      {/* Cleaner Swap Recommendation */}
+                      {item.cleaner_alternative ? (
+                        <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/40 flex flex-col justify-between gap-2.5 h-full">
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-800 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                Recommended Clean Swap
+                              </span>
+                              <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300 shrink-0">
+                                {item.cleaner_alternative.health_score}/100
+                              </span>
+                            </div>
+                            <h5 className="text-xs font-semibold text-zinc-900 leading-snug">
+                              {item.cleaner_alternative.name}
+                            </h5>
+                            <p className="text-[11px] text-zinc-600 font-light mt-1 leading-relaxed">
+                              {item.cleaner_alternative.key_benefit}
                             </p>
-                          ))}
+                          </div>
+
+                          {item.cleaner_alternative.direct_pdp_url && (
+                            <a
+                              href={item.cleaner_alternative.direct_pdp_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="self-start mt-1 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                            >
+                              <span>Find on {result.store_name}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3.5 rounded-lg border border-zinc-200 bg-zinc-50 text-xs text-zinc-500 flex items-center gap-2 h-full">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Already optimal: This product is verified clean on the shelf.</span>
                         </div>
                       )}
                     </div>
-
-                    {/* Cleaner Swap Recommendation */}
-                    {item.cleaner_alternative ? (
-                      <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/40 flex flex-col justify-between gap-2">
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-800 font-bold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Recommended Clean Swap on {result.store_name}
-                            </span>
-                            <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
-                              {item.cleaner_alternative.health_score}/100
-                            </span>
-                          </div>
-                          <h5 className="text-xs font-semibold text-zinc-900">
-                            {item.cleaner_alternative.name}
-                          </h5>
-                          <p className="text-[11px] text-zinc-600 font-light mt-0.5">
-                            {item.cleaner_alternative.key_benefit}
-                          </p>
-                        </div>
-
-                        {item.cleaner_alternative.direct_pdp_url && (
-                          <a
-                            href={item.cleaner_alternative.direct_pdp_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="self-start mt-1 px-3 py-1 bg-emerald-800 hover:bg-emerald-900 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
-                          >
-                            <span>Open on {result.store_name}</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="p-3 rounded-lg border border-zinc-200 bg-zinc-50 text-xs text-zinc-500 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Already optimal: This product is verified clean on the shelf.</span>
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

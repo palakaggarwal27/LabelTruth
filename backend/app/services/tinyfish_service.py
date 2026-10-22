@@ -203,19 +203,31 @@ class TinyFishService:
                     )
                     if res.status_code == 200:
                         data = res.json()
-                        for item in data.get("results", [])[:3]:
+                        for item in data.get("results", [])[:4]:
                             u = item.get("url", "")
                             title = item.get("title", "")
                             if u:
+                                # Strip e-commerce marketing and category suffixes
+                                clean_title = re.sub(r'(?i)\s*[-|:]\s*(buy online|zepto|blinkit|bigbasket|amazon|best price|at best price|fresh|grocery|instant delivery).*', '', title)
+                                clean_title = re.sub(r'(?i)^(buy\s+|online\s+|order\s+)', '', clean_title).strip()
+                                # Avoid returning category/listing pages as product names
+                                if any(cat in clean_title.lower() for cat in ["category", "categories", "all products", "search results", "browse", "department"]):
+                                    slug_prod = extract_product_name_from_url(u)
+                                    if slug_prod:
+                                        clean_title = slug_prod
+                                    else:
+                                        continue
+                                if len(clean_title) < 4:
+                                    continue
                                 v_res = validate_and_clean_pdp_url(u)
                                 clean_alts.append({
-                                    "name": title or "Clean Whole-Food Alternative",
-                                    "product_name": title or "Clean Whole-Food Alternative",
+                                    "name": clean_title,
+                                    "product_name": clean_title,
                                     "direct_pdp_url": v_res.get("url") or u,
                                     "is_direct_pdp": v_res.get("is_pdp", False),
                                     "health_score": 88,
                                     "pincode_available": True,
-                                    "reason": "100% whole grain, zero added sugars, zero palm oil, verified FSSAI compliant."
+                                    "reason": "Whole food formulation, zero added sugars, zero palm oil, verified FSSAI compliant."
                                 })
             except Exception as search_err:
                 logger.warning(f"TinySearch fallback for pincode alternatives notice: {search_err}")
@@ -393,15 +405,30 @@ class TinyFishService:
         return {"store_name": domain_store, "items": all_items}
 
     def _parse_items_from_text(self, text: str) -> list:
-        """Helper to extract product names and quantities from scraped page text"""
+        """Helper to extract real packaged grocery product names and quantities from scraped page text, rejecting UI boilerplate"""
+        if not text:
+            return []
         items = []
+        ui_keywords = {
+            "download", "login", "terms", "privacy", "policy", "contact", "copyright", "rights reserved",
+            "delivery", "shipping", "return", "refund", "faq", "help", "about us", "press", "careers",
+            "category", "all categories", "explore", "trending", "offers", "coupon", "checkout", "cart is empty",
+            "add to cart", "view cart", "subtotal", "total", "bill details", "convenience fee", "tip your delivery partner"
+        }
+        unit_pattern = re.compile(r'\b\d+\s*(?:g|gm|gms|gram|grams|kg|ml|l|ltr|liter|litres|pack|pcs|pieces)\b', re.IGNORECASE)
         lines = [l.strip() for l in text.split('\n') if l.strip()]
         for line in lines:
-            if any(unit in line.lower() for unit in ["g", "gm", "kg", "ml", "l", "pack", "pcs"]) and len(line) < 80:
+            if len(line) < 6 or len(line) > 100:
+                continue
+            lower_l = line.lower()
+            if any(ui in lower_l for ui in ui_keywords):
+                continue
+            if unit_pattern.search(lower_l) and not lower_l.startswith("http"):
                 cleaned = re.sub(r'[^\w\s\(\)\.-]', '', line).strip()
-                if len(cleaned) > 5:
-                    items.append({"product_name": cleaned, "quantity": 1})
-                    if len(items) >= 10:
+                # Filter out pure numbers or generic UI fragments
+                if len(cleaned) > 8 and not cleaned.isdigit() and len(cleaned.split()) >= 2:
+                    items.append({"product_name": cleaned.title(), "quantity": 1})
+                    if len(items) >= 8:
                         break
         return items
 

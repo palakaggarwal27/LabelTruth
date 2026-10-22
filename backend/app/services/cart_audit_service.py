@@ -13,122 +13,56 @@ from app.schemas.cart_audit import CartAuditResponse, CartItemAudit
 from app.schemas.analysis import HealthierAlternative
 from app.schemas.user_profile import UserProfile
 from app.services.tinyfish_service import tinyfish_service
-from app.utils.pdp_validator import validate_and_clean_pdp_url
 
 logger = logging.getLogger(__name__)
 
-# Curated benchmark clean swaps on Indian quick-commerce (Zepto / Blinkit)
-# Every item is a verified clean product with zero palm oil, zero chemical additives
-CATEGORY_CLEAN_BENCHMARKS = {
-    "chips": {
-        "name": "The Whole Truth Roasted Makhana (Pink Salt & Olive Oil)",
-        "product_name": "The Whole Truth Roasted Makhana",
-        "health_score": 92,
-        "key_benefit": "Slow-roasted foxnuts, zero palm oil, zero synthetic flavor enhancers (INS 621/627/631 free).",
-        "direct_pdp_url": "https://www.zepto.com/pn/the-whole-truth-roasted-makhana-pink-salt/pvid/makhana-twt-1",
-        "is_direct_pdp": True,
-        "reason": "100% whole foxnuts roasted in cold-pressed oil with Himalayan pink salt."
-    },
-    "namkeen": {
-        "name": "Slurrp Farm Ragi Puffs (Cheese & Herbs)",
-        "product_name": "Slurrp Farm Ragi Puffs",
-        "health_score": 88,
-        "key_benefit": "Zero maida, zero palm oil, baked ragi and jowar whole grains with natural seasoning.",
-        "direct_pdp_url": "https://www.zepto.com/pn/slurrp-farm-ragi-puffs-cheese-and-herbs/pvid/slurrp-ragi-1",
-        "is_direct_pdp": True,
-        "reason": "Baked finger millet snack with zero artificial preservatives or trans fats."
-    },
-    "biscuit": {
-        "name": "The Whole Truth 100% Whole Wheat Sourdough Crackers",
-        "product_name": "The Whole Truth Sourdough Crackers",
-        "health_score": 90,
-        "key_benefit": "Zero maida, zero palm oil, zero refined sugar. 100% whole wheat sourdough.",
-        "direct_pdp_url": "https://www.zepto.com/pn/the-whole-truth-sourdough-crackers/pvid/twt-crackers-1",
-        "is_direct_pdp": True,
-        "reason": "Slow-fermented whole wheat sourdough with clean digestive enzyme matrix."
-    },
-    "cookie": {
-        "name": "Early Foods Organic Multi-Grain Jaggery Butter Cookies",
-        "product_name": "Early Foods Multi-Grain Cookies",
-        "health_score": 89,
-        "key_benefit": "100% whole millets, organic jaggery, pure dairy butter. Zero maida, zero baking powder.",
-        "direct_pdp_url": "https://blinkit.com/prn/early-foods-organic-multi-grain-cookies/prid/ef-cookies-1",
-        "is_direct_pdp": True,
-        "reason": "Traditional stone-ground millets and pure butter without chemical emulsifiers."
-    },
-    "cola": {
-        "name": "Atmosphere Brew Sparkling Raw Kombucha (Ginger Lemon)",
-        "product_name": "Atmosphere Brew Kombucha",
-        "health_score": 91,
-        "key_benefit": "Naturally fermented sparkling probiotic tea, zero phosphoric acid, active gut cultures.",
-        "direct_pdp_url": "https://www.zepto.com/pn/atmosphere-brew-raw-kombucha/pvid/atmos-kombucha-1",
-        "is_direct_pdp": True,
-        "reason": "Natural digestive probiotic sparkle that alkalizes rather than triggering acid reflux."
-    },
-    "soda": {
-        "name": "Raw Pressery 100% Pure Tender Coconut Water",
-        "product_name": "Raw Pressery Tender Coconut Water",
-        "health_score": 96,
-        "key_benefit": "Single-ingredient isotonic hydration, zero added sugar, zero chemical preservatives, naturally alkaline.",
-        "direct_pdp_url": "https://www.zepto.com/pn/raw-pressery-tender-coconut-water/pvid/raw-coco-1",
-        "is_direct_pdp": True,
-        "reason": "Naturally mineral-rich electrolytes with zero gastric acid provocation."
-    },
-    "beverage": {
-        "name": "Raw Pressery Cold-Pressed Valencia Orange Juice (Zero Added Sugar)",
-        "product_name": "Raw Pressery Cold-Pressed Orange Juice",
-        "health_score": 89,
-        "key_benefit": "100% cold-pressed fruit, zero concentrate, zero added cane sugar, zero chemical preservatives.",
-        "direct_pdp_url": "https://www.zepto.com/pn/raw-pressery-valencia-orange/pvid/raw-orange-1",
-        "is_direct_pdp": True,
-        "reason": "Pure cold-pressed whole fruit juice with active enzymes and vitamin C."
-    },
-    "chocolate_drink": {
-        "name": "Early Foods Sprouted Ragi & Almond Cocoa Health Drink Mix",
-        "product_name": "Early Foods Sprouted Ragi Cocoa Mix",
-        "health_score": 94,
-        "key_benefit": "100% sprouted ragi, California almonds, pure natural cocoa. Zero maltodextrin (GI 110), zero white sugar.",
-        "direct_pdp_url": "https://blinkit.com/prn/early-foods-sprouted-ragi-almond-cocoa-drink/prid/ef-ragi-1",
-        "is_direct_pdp": True,
-        "reason": "Natural whole sprouted grains with high bioavailable calcium and zero refined glycemic spikes."
-    },
-    "noodles": {
-        "name": "Slurrp Farm Foxtail Millet Noodles (Sundried, Zero Maida)",
-        "product_name": "Slurrp Farm Millet Noodles",
-        "health_score": 88,
-        "key_benefit": "100% foxtail and finger millet, zero maida, sun-dried without deep oil frying (0% palm oil).",
-        "direct_pdp_url": "https://www.zepto.com/pn/slurrp-farm-foxtail-millet-noodles/pvid/slurrp-nood-1",
-        "is_direct_pdp": True,
-        "reason": "Non-fried whole-grain millet noodles with clean natural spice seasoning."
-    },
-    "cereal": {
-        "name": "The Whole Truth 100% Gluten-Free Rolled Oats",
-        "product_name": "The Whole Truth Rolled Oats",
-        "health_score": 95,
-        "key_benefit": "Single-ingredient jumbo rolled oats, zero added sugars, zero malt extracts, high beta-glucan soluble fiber.",
-        "direct_pdp_url": "https://www.zepto.com/pn/the-whole-truth-gluten-free-rolled-oats/pvid/twt-oats-1",
-        "is_direct_pdp": True,
-        "reason": "100% certified clean whole-grain oats supporting sustained satiety and glycemic stability."
-    },
-    "chocolate": {
-        "name": "The Whole Truth 71% Dark Chocolate (Zero Refined Sugar)",
-        "product_name": "The Whole Truth 71% Dark Chocolate",
-        "health_score": 90,
-        "key_benefit": "Only 2 ingredients: Single-origin cocoa beans and dates. Zero palm oil, zero soy lecithin, zero cane sugar.",
-        "direct_pdp_url": "https://www.zepto.com/pn/the-whole-truth-dark-chocolate-71/pvid/twt-choc-1",
-        "is_direct_pdp": True,
-        "reason": "Whole-food date sweetened bean-to-bar dark chocolate rich in polyphenols."
-    },
-    "dairy": {
-        "name": "Akshayakalpa Organic Artisan Mozzarella / Paneer",
-        "product_name": "Akshayakalpa Organic Dairy",
-        "health_score": 93,
-        "key_benefit": "100% certified organic A2 milk, zero synthetic emulsifiers, zero antibiotics, zero chemical preservatives.",
-        "direct_pdp_url": "https://www.zepto.com/pn/akshayakalpa-artisan-organic-cheese/pvid/akshaya-ch-1",
-        "is_direct_pdp": True,
-        "reason": "Grass-fed certified organic dairy free of hormones, emulsifiers, or vegetable oil substitutes."
-    }
-}
+CART_TEXT_PARSE_PROMPT = """You are LabelTruth Cart Extractor. The following is scraped text from a quick-commerce website or shared cart link.
+Extract all packaged food/grocery product names visible in this text. Include brand names when available.
+
+Text:
+{text}
+
+Return ONLY valid JSON with this structure:
+{{
+  "store_name": "detected store or Quick-Commerce",
+  "items": [
+    {{"product_name": "Brand Product Name", "quantity": 1}}
+  ]
+}}
+
+If fewer than 1 food product can be identified, return {{"store_name": "Quick-Commerce", "items": []}}
+"""
+
+ALTERNATIVE_DISCOVERY_PROMPT = """You are LabelTruth's Alternative Product Advisor for Indian quick-commerce.
+
+Product in cart: "{product_name}"
+Category: {category}
+Current health score: {score}/100
+Store: {store_name}
+User health profile: {profile_summary}
+
+Your task:
+1. Think of a SPECIFIC cleaner, healthier Indian brand/product that is a genuine same-category alternative to "{product_name}".
+   - It must be a real brand available in India (e.g. The Whole Truth, Early Foods, Slurrp Farm, Sattviko, Yoga Bar, Raw Pressery, Akshayakalpa, Wingreens, Epigamia, Ketofy, True Elements, Sorich, etc.)
+   - It must be realistically available on Zepto/Blinkit in India
+   - It must have FEWER additives, no palm oil, no refined sugar (or significantly less), less processing
+   - It must be from a DIFFERENT brand/product than "{product_name}"
+   - Its estimated health score must be strictly greater than {score}
+2. Provide key benefit (what makes it cleaner — specific ingredients avoided or present)
+3. Construct a realistic Zepto or Blinkit search URL for this product.
+
+Return ONLY valid JSON:
+{{
+  "name": "Brand Product Full Name",
+  "health_score": 88,
+  "key_benefit": "Specific reason why it is cleaner (e.g. zero palm oil, no refined sugar)",
+  "search_url": "https://www.zepto.com/search?query=product+name",
+  "reason": "Why this is a better choice for the user profile"
+}}
+
+If NO genuinely cleaner alternative exists (the product is already a clean wholefood), return:
+{{"name": null}}
+"""
 
 CART_OCR_PROMPT = """You are LabelTruth Cart Intelligence Auditor.
 Carefully examine this quick-commerce cart screenshot (from Zepto, Blinkit, Swiggy Instamart, BigBasket, or Amazon Fresh).
@@ -217,63 +151,205 @@ class CartAuditService:
 
     async def extract_items_from_url(self, cart_url: str, pincode: str = "110001") -> Dict[str, Any]:
         """
-        Extract items from cart or product URL using TinyFish autonomous browser agent & DOM inspection.
-        Opens the URL in headless browser, navigates to cart/product, waits for hydration, and extracts items.
+        Extract items from cart URL using TinyFish browser agent with Gemini fallback text parsing.
         """
-        return await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode)
+        # Step 1: TinyFish agent browser navigation
+        raw_data = await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode)
+        items = raw_data.get("items", [])
+        store_name = raw_data.get("store_name", "Quick-Commerce")
 
-    def _determine_category_and_benchmark(self, product_name: str) -> tuple[str, Dict[str, Any]]:
-        """Maps any packaged product to its category and clean benchmark"""
+        if items:
+            return raw_data
+
+        # Step 2: TinyFetch static DOM + Gemini text parsing
+        try:
+            import httpx
+            from app.config import TINYFISH_API_KEY
+            from app.services.tinyfish_service import is_waf_block_content
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.post(
+                    "https://api.fetch.tinyfish.ai",
+                    headers={"X-API-Key": TINYFISH_API_KEY, "Content-Type": "application/json"},
+                    json={"urls": [cart_url]}
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    results = data.get("results", [])
+                    if results:
+                        page_text = str(results[0].get("text", "") or results[0].get("content", ""))
+                        if page_text and not is_waf_block_content(page_text):
+                            prompt = CART_TEXT_PARSE_PROMPT.format(text=page_text[:4000])
+                            parsed_json = self._call_gemini_text(prompt, max_output=1024)
+                            if parsed_json:
+                                parsed = json.loads(parsed_json)
+                                if parsed.get("items"):
+                                    return {
+                                        "store_name": parsed.get("store_name") or store_name,
+                                        "items": parsed["items"]
+                                    }
+        except Exception as e:
+            logger.warning(f"TinyFetch + Gemini parse fallback notice: {e}")
+
+        return {"store_name": store_name, "items": []}
+
+    def _call_gemini_text(self, prompt: str, max_output: int = 512) -> Optional[str]:
+        """Synchronous Gemini text call for JSON extraction"""
+        ACTIVE_MODELS = [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+            "gemini-3.8-flash",
+            "gemini-flash-latest"
+        ]
+        for cl in self._get_active_clients():
+            if not cl:
+                continue
+            for model_name in ACTIVE_MODELS:
+                try:
+                    response = cl.models.generate_content(
+                        model=model_name,
+                        contents=[prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            max_output_tokens=max_output
+                        )
+                    )
+                    txt = response.text.strip()
+                    if txt.startswith("```json"):
+                        txt = txt[7:]
+                    if txt.startswith("```"):
+                        txt = txt[3:]
+                    if txt.endswith("```"):
+                        txt = txt[:-3]
+                    return txt.strip()
+                except Exception as e:
+                    logger.warning(f"Gemini text call with {model_name} failed: {e}")
+                    continue
+        return None
+
+    def _detect_category(self, product_name: str) -> str:
+        """Map product name to human-readable category for Gemini context"""
         p = product_name.lower()
-        if any(w in p for w in ["bhujia", "sev", "namkeen", "mixture", "chivda", "kurkure", "snack"]):
-            return "namkeen", CATEGORY_CLEAN_BENCHMARKS["namkeen"]
-        if any(w in p for w in ["chip", "chips", "crisp", "lays", "doritos", "bingo", "nacho"]):
-            return "chips", CATEGORY_CLEAN_BENCHMARKS["chips"]
-        if any(w in p for w in ["biscuit", "rusk", "cracker", "maska", "50-50", "marie", "parle"]):
-            return "biscuit", CATEGORY_CLEAN_BENCHMARKS["biscuit"]
+        if any(w in p for w in ["bhujia", "sev", "namkeen", "mixture", "chivda"]):
+            return "namkeen/savory snack"
+        if any(w in p for w in ["chip", "chips", "crisp", "lays", "doritos", "bingo", "nacho", "kurkure"]):
+            return "chips/crisps"
+        if any(w in p for w in ["biscuit", "rusk", "cracker", "50-50", "marie", "parle-g", "mcvities"]):
+            return "biscuit/cracker"
         if any(w in p for w in ["cookie", "cookies", "bourbon", "oreo", "creme", "hide & seek"]):
-            return "cookie", CATEGORY_CLEAN_BENCHMARKS["cookie"]
-        if any(w in p for w in ["cola", "coke", "pepsi", "thums", "sprite", "fanta", "mountain dew"]):
-            return "cola", CATEGORY_CLEAN_BENCHMARKS["cola"]
-        if any(w in p for w in ["soda", "fizzy", "carbonated", "tonic", "energy drink", "red bull", "sting"]):
-            return "soda", CATEGORY_CLEAN_BENCHMARKS["soda"]
-        if any(w in p for w in ["bournvita", "horlicks", "complan", "boost", "milo", "malt"]):
-            return "chocolate_drink", CATEGORY_CLEAN_BENCHMARKS["chocolate_drink"]
-        if any(w in p for w in ["noodle", "noodles", "maggi", "yippee", "top ramen", "pasta", "macaroni"]):
-            return "noodles", CATEGORY_CLEAN_BENCHMARKS["noodles"]
-        if any(w in p for w in ["oats", "cereal", "corn flakes", "chocos", "muesli", "granola"]):
-            return "cereal", CATEGORY_CLEAN_BENCHMARKS["cereal"]
-        if any(w in p for w in ["chocolate", "cadbury", "kitkat", "snickers", "dairy milk", "5 star"]):
-            return "chocolate", CATEGORY_CLEAN_BENCHMARKS["chocolate"]
-        if any(w in p for w in ["cheese", "butter", "paneer", "mayo", "spread", "dip"]):
-            return "dairy", CATEGORY_CLEAN_BENCHMARKS["dairy"]
-        if any(w in p for w in ["juice", "frooti", "maaza", "slice", "tropicana", "real"]):
-            return "beverage", CATEGORY_CLEAN_BENCHMARKS["beverage"]
-        
-        return "chips", CATEGORY_CLEAN_BENCHMARKS["chips"]
+            return "cookies"
+        if any(w in p for w in ["cola", "coke", "pepsi", "thums", "sprite", "fanta", "mountain dew", "7up"]):
+            return "cola/carbonated drink"
+        if any(w in p for w in ["energy drink", "red bull", "sting", "monster"]):
+            return "energy drink"
+        if any(w in p for w in ["soda", "fizzy", "carbonated", "tonic"]):
+            return "soda/carbonated water"
+        if any(w in p for w in ["bournvita", "horlicks", "complan", "boost", "milo", "ovaltine"]):
+            return "malt health drink"
+        if any(w in p for w in ["noodle", "noodles", "maggi", "yippee", "top ramen"]):
+            return "instant noodles"
+        if any(w in p for w in ["pasta", "macaroni", "spaghetti", "penne"]):
+            return "pasta"
+        if any(w in p for w in ["oats", "corn flakes", "chocos", "muesli", "granola", "cereal"]):
+            return "breakfast cereal"
+        if any(w in p for w in ["chocolate", "cadbury", "kitkat", "snickers", "dairy milk", "5 star", "munch"]):
+            return "chocolate/candy"
+        if any(w in p for w in ["cheese", "mozzarella"]):
+            return "cheese"
+        if any(w in p for w in ["butter", "margarine", "spread"]):
+            return "butter/spread"
+        if any(w in p for w in ["paneer", "chhena"]):
+            return "paneer"
+        if any(w in p for w in ["yogurt", "curd", "dahi", "greek"]):
+            return "yogurt/curd"
+        if any(w in p for w in ["juice", "frooti", "maaza", "slice", "tropicana", "real", "appy"]):
+            return "fruit juice/drink"
+        if any(w in p for w in ["sauce", "ketchup", "mayo", "mayonnaise", "dip"]):
+            return "sauce/condiment"
+        if any(w in p for w in ["bread", "loaf", "pav", "bun"]):
+            return "bread/bakery"
+        if any(w in p for w in ["milk", "full cream", "toned"]):
+            return "milk"
+        if any(w in p for w in ["ghee", "clarified butter"]):
+            return "ghee"
+        if any(w in p for w in ["oil", "sunflower", "soybean", "canola", "refined oil"]):
+            return "cooking oil"
+        if any(w in p for w in ["makhana", "foxnut"]):
+            return "foxnuts/makhana"
+        if any(w in p for w in ["almond", "cashew", "peanut", "walnut", "pistachio", "nut"]):
+            return "nuts/dry fruits"
+        return "packaged food"
 
-    def _is_same_product_or_brand(self, original_name: str, candidate_name: str) -> bool:
-        """Strictly prevents returning the same product or the same ultra-processed brand as a swap"""
-        orig_words = set(re.findall(r'\w+', original_name.lower()))
-        cand_words = set(re.findall(r'\w+', candidate_name.lower()))
+    async def _find_alternative_with_gemini(
+        self,
+        product_name: str,
+        category: str,
+        item_score: int,
+        store_name: str,
+        user_profile: UserProfile
+    ) -> Optional[HealthierAlternative]:
+        """
+        Use Gemini to discover a genuinely better, specifically-named brand alternative.
+        Returns None if the product is already clean (score >= 82) or no better option exists.
+        """
+        if item_score >= 82:
+            return None
 
-        # Remove common functional stopwords
-        stopwords = {"pack", "gram", "gm", "ml", "liter", "and", "the", "with", "of", "in", "flavour", "flavored"}
-        orig_sig = orig_words - stopwords
-        cand_sig = cand_words - stopwords
+        profile_summary = ""
+        if user_profile.medical_conditions:
+            profile_summary += f"Conditions: {', '.join(user_profile.medical_conditions)}. "
+        if user_profile.allergies:
+            profile_summary += f"Allergies: {', '.join(user_profile.allergies)}. "
+        if user_profile.dietary_preferences:
+            profile_summary += f"Diet: {', '.join(user_profile.dietary_preferences)}. "
+        if not profile_summary:
+            profile_summary = "General healthy adult."
 
-        # If significant overlap of 2+ keywords (e.g. "haldiram" and "bhujia", or "good" and "day")
-        common = orig_sig & cand_sig
-        if len(common) >= 2:
-            return True
+        prompt = ALTERNATIVE_DISCOVERY_PROMPT.format(
+            product_name=product_name,
+            category=category,
+            score=item_score,
+            store_name=store_name,
+            profile_summary=profile_summary
+        )
 
-        # Check prominent brand names
-        brands = ["haldiram", "lays", "britannia", "parle", "cadbury", "coca", "pepsi", "nestle", "bingo", "amul", "kurkure"]
-        for b in brands:
-            if b in original_name.lower() and b in candidate_name.lower():
-                return True
+        try:
+            json_str = self._call_gemini_text(prompt, max_output=512)
+            if not json_str:
+                return None
+            data = json.loads(json_str)
+            if not data.get("name"):
+                return None  # Gemini says product is already optimal
 
-        return False
+            alt_name = data["name"]
+            alt_score = int(data.get("health_score", item_score + 12))
+            key_benefit = data.get("key_benefit", "Cleaner ingredient profile with fewer additives.")
+            search_url = data.get("search_url", "")
+            reason = data.get("reason", "Verified cleaner formulation.")
+
+            if alt_score <= item_score:
+                return None
+
+            # Build search URL if not provided
+            if not search_url:
+                query_slug = alt_name.lower().replace(" ", "+")
+                search_url = f"https://www.zepto.com/search?query={query_slug}"
+
+            return HealthierAlternative(
+                name=alt_name,
+                product_name=alt_name,
+                health_score=alt_score,
+                key_benefit=key_benefit,
+                price_comparison="Comparable",
+                personalized_fit=reason,
+                direct_pdp_url=search_url,
+                is_direct_pdp=False,
+                pincode_available=True,
+                type="CLEAN_COMMERCIAL",
+                reason=reason
+            )
+        except Exception as e:
+            logger.warning(f"Gemini alternative discovery notice for '{product_name}': {e}")
+            return None
 
     async def _audit_single_item(
         self,
@@ -285,8 +361,8 @@ class CartAuditService:
         """
         Deep clinical audit of a single cart item:
         1. Fetch packaging/back-of-pack labels via TinySearch + TinyFetch
-        2. Give packaging data to Gemini AI for health scoring and medical profile evaluation
-        3. Use TinyFish Browser Agent to find cleaner alternatives at user's pincode with direct PDP URLs
+        2. Analyze via Gemini AI text query with health profile
+        3. Use Gemini to find a genuinely better specific brand alternative
         """
         p_name = item.get("product_name", "Packaged Product").strip()
         qty = int(item.get("quantity", 1))
@@ -379,50 +455,15 @@ class CartAuditService:
             else:
                 verdict = "AVOID (VIOLATES PROFILE)"
 
-        # 4. Find cleaner alternatives using TinyFish Browser Agent
-        category_key, benchmark = self._determine_category_and_benchmark(p_name)
-        clean_alt_candidate = None
+        # 4. Find genuinely better specific alternative using Gemini AI
+        category = self._detect_category(p_name)
+        clean_alt_candidate = await self._find_alternative_with_gemini(
+            p_name, category, item_score, store_name, user_profile
+        )
 
-        try:
-            clean_query = f"clean organic whole food {category_key} {store_name}"
-            live_alts = await tinyfish_service.find_pincode_alternatives(clean_query, pincode)
-            for cand in live_alts:
-                cand_name = cand.get("name") or cand.get("product_name") or ""
-                cand_score = int(cand.get("health_score", 85))
-                if not self._is_same_product_or_brand(p_name, cand_name) and cand_score > item_score + 10:
-                    v_res = validate_and_clean_pdp_url(cand.get("direct_pdp_url") or "")
-                    clean_alt_candidate = HealthierAlternative(
-                        name=cand_name,
-                        product_name=cand.get("product_name") or cand_name,
-                        health_score=cand_score,
-                        key_benefit="100% whole food formulation, zero palm oil, zero synthetic additives.",
-                        price_comparison="Comparable",
-                        personalized_fit="Safe and verified for your health profile.",
-                        direct_pdp_url=v_res.get("url") or cand.get("direct_pdp_url"),
-                        is_direct_pdp=v_res.get("is_pdp", True),
-                        pincode_available=True,
-                        type="CLEAN_COMMERCIAL",
-                        reason=f"Verified cleaner swap on {store_name} at PIN {pincode}."
-                    )
-                    break
-        except Exception as alt_err:
-            logger.warning(f"Live alternative search notice for {p_name}: {alt_err}")
-
-        if not clean_alt_candidate:
-            v_res = validate_and_clean_pdp_url(benchmark["direct_pdp_url"])
-            clean_alt_candidate = HealthierAlternative(
-                name=benchmark["name"],
-                product_name=benchmark["product_name"],
-                health_score=benchmark["health_score"],
-                key_benefit=benchmark["key_benefit"],
-                price_comparison="Comparable",
-                personalized_fit="Fully aligned with your active health profile.",
-                direct_pdp_url=v_res.get("url") or benchmark["direct_pdp_url"],
-                is_direct_pdp=True,
-                pincode_available=True,
-                type="CLEAN_COMMERCIAL",
-                reason=f"Verified clean swap on {store_name} at PIN {pincode}: {benchmark['reason']}"
-            )
+        # Safety check: only use alternative if score is strictly better
+        if clean_alt_candidate and clean_alt_candidate.health_score <= item_score:
+            clean_alt_candidate = None
 
         return CartItemAudit(
             product_name=p_name,
