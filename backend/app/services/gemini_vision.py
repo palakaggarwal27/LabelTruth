@@ -346,9 +346,7 @@ class GeminiVisionService:
                 except Exception as e:
                     err_str = str(e)
                     last_error = e
-                    logger.warning(f"Model {model_name} failed for text query ({err_str[:120]}), trying next fallback...")
-                    if "503" not in err_str and "429" not in err_str and "UNAVAILABLE" not in err_str and "404" not in err_str:
-                        break
+                    continue
             if parsed:
                 break
 
@@ -429,10 +427,12 @@ class GeminiVisionService:
             product_name=clean_title
         )
 
+        final_sc = score_res["final_health_score"]
+        fallback_verdict = "SAFE FOR YOU" if final_sc >= 70 else ("CAUTION" if final_sc >= 45 else "AVOID (VIOLATES PROFILE)")
         res = LabelAnalysisResult(
             product_name=clean_title,
-            health_score=score_res["final_health_score"],
-            personalized_verdict="SAFE FOR YOU",
+            health_score=final_sc,
+            personalized_verdict=fallback_verdict,
             simple_summary=f"Clinical analysis for {clean_title}. Audited against FSSAI 2020 labelling regulations.",
             deceptive_claims_flagged=[],
             fssai_violations=[],

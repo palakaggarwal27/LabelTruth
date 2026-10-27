@@ -50,19 +50,35 @@ export const CompareProducts: React.FC = () => {
 
   const scoreA = productA ? productA.health_score : 0;
   const scoreB = productB ? productB.health_score : 0;
+  const scoreDiff = Math.abs(scoreA - scoreB);
 
-  let winnerText = '';
-  let winnerProduct: 'A' | 'B' | 'TIE' | null = null;
+  // Comparison State Logic:
+  // - If both are low scores (< 55): Neither is a superior choice.
+  // - If scoreDiff <= 3: It's essentially a tie / comparable.
+  // - Clear winner requires scoreDiff >= 4 AND a reasonable health profile.
+  let comparisonType: 'CLEAR_WINNER' | 'MARGINAL_LEAD' | 'BOTH_POOR' | 'TIE' | null = null;
+  let winnerProduct: 'A' | 'B' | null = null;
+  let verdictText = '';
+
   if (productA && productB) {
-    if (scoreA > scoreB) {
-      winnerProduct = 'A';
-      winnerText = `${productA.product_name} is cleaner (+${scoreA - scoreB} pts better)`;
-    } else if (scoreB > scoreA) {
-      winnerProduct = 'B';
-      winnerText = `${productB.product_name} is cleaner (+${scoreB - scoreA} pts better)`;
+    if (scoreA < 55 && scoreB < 55) {
+      if (scoreDiff <= 3) {
+        comparisonType = 'BOTH_POOR';
+        verdictText = `Both products have compromised nutritional quality (${scoreA} vs ${scoreB} pts). Neither is recommended.`;
+      } else {
+        comparisonType = 'MARGINAL_LEAD';
+        winnerProduct = scoreA > scoreB ? 'A' : 'B';
+        const leadProd = scoreA > scoreB ? productA : productB;
+        verdictText = `${leadProd.product_name} is marginally less processed (+${scoreDiff} pts), but both products have significant nutritional concerns.`;
+      }
+    } else if (scoreDiff <= 3) {
+      comparisonType = 'TIE';
+      verdictText = `Both products have comparable nutritional integrity (${scoreA} vs ${scoreB} pts).`;
     } else {
-      winnerProduct = 'TIE';
-      winnerText = 'Both products have equivalent nutritional integrity.';
+      comparisonType = 'CLEAR_WINNER';
+      winnerProduct = scoreA > scoreB ? 'A' : 'B';
+      const leadProd = scoreA > scoreB ? productA : productB;
+      verdictText = `${leadProd.product_name} is the superior choice (+${scoreDiff} pts cleaner).`;
     }
   }
 
@@ -72,8 +88,16 @@ export const CompareProducts: React.FC = () => {
     return 'text-rose-700 bg-rose-50 border-rose-200';
   };
 
-  const renderVerdictBadge = (verdict: PersonalizedVerdict | string) => {
-    if (verdict === 'SAFE FOR YOU') {
+  const renderVerdictBadge = (verdict: PersonalizedVerdict | string, healthScore: number) => {
+    // Medical integrity rule: A product with health score < 70 must NEVER be labeled SAFE FOR YOU
+    let effectiveVerdict = verdict;
+    if (healthScore < 45) {
+      effectiveVerdict = 'AVOID (VIOLATES PROFILE)';
+    } else if (healthScore < 70 && effectiveVerdict === 'SAFE FOR YOU') {
+      effectiveVerdict = 'CAUTION';
+    }
+
+    if (effectiveVerdict === 'SAFE FOR YOU') {
       return (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
           <ShieldCheck className="w-3.5 h-3.5" />
@@ -81,7 +105,7 @@ export const CompareProducts: React.FC = () => {
         </div>
       );
     }
-    if (verdict === 'CAUTION') {
+    if (effectiveVerdict === 'CAUTION') {
       return (
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold">
           <AlertTriangle className="w-3.5 h-3.5" />
@@ -104,13 +128,16 @@ export const CompareProducts: React.FC = () => {
     error: string | null,
     onScan: (input: { query?: string; imageFile?: File | Blob }) => void,
     onReset: () => void,
-    isWinner: boolean
+    isLead: boolean,
+    badgeType: 'SUPERIOR' | 'MARGINAL' | null
   ) => {
     return (
       <div
         className={`p-5 rounded-lg border transition-all ${
-          isWinner
+          badgeType === 'SUPERIOR'
             ? 'border-emerald-400 bg-emerald-50/20 shadow-sm ring-1 ring-emerald-300'
+            : badgeType === 'MARGINAL'
+            ? 'border-amber-300 bg-amber-50/20 shadow-sm'
             : 'border-zinc-200 bg-white'
         }`}
       >
@@ -119,10 +146,16 @@ export const CompareProducts: React.FC = () => {
             <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-zinc-900 text-white">
               {label}
             </span>
-            {isWinner && (
+            {badgeType === 'SUPERIOR' && (
               <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                 Superior Choice
+              </span>
+            )}
+            {badgeType === 'MARGINAL' && (
+              <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-700" />
+                Marginally Better (+{scoreDiff} pts)
               </span>
             )}
           </div>
@@ -174,7 +207,7 @@ export const CompareProducts: React.FC = () => {
 
             {/* Verdict Badge */}
             <div className="flex items-center gap-2">
-              {renderVerdictBadge(product.personalized_verdict)}
+              {renderVerdictBadge(product.personalized_verdict, product.health_score)}
             </div>
 
             {/* Metric Comparison Table */}
@@ -251,18 +284,46 @@ export const CompareProducts: React.FC = () => {
         </p>
       </div>
 
-      {winnerProduct && productA && productB && (
-        <div className="p-4 rounded-lg border border-emerald-300 bg-emerald-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+      {comparisonType && productA && productB && (
+        <div className={`p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm ${
+          comparisonType === 'CLEAR_WINNER'
+            ? 'border-emerald-300 bg-emerald-50/90'
+            : comparisonType === 'MARGINAL_LEAD' || comparisonType === 'BOTH_POOR'
+            ? 'border-amber-300 bg-amber-50/90'
+            : 'border-zinc-300 bg-zinc-50/90'
+        }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-              <Trophy className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-full text-white flex items-center justify-center shrink-0 shadow-sm ${
+              comparisonType === 'CLEAR_WINNER'
+                ? 'bg-emerald-600'
+                : comparisonType === 'MARGINAL_LEAD' || comparisonType === 'BOTH_POOR'
+                ? 'bg-amber-600'
+                : 'bg-zinc-600'
+            }`}>
+              {comparisonType === 'CLEAR_WINNER' ? (
+                <Trophy className="w-5 h-5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5" />
+              )}
             </div>
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-800 font-bold block">
+              <span className={`text-[10px] font-mono uppercase tracking-wider font-bold block ${
+                comparisonType === 'CLEAR_WINNER'
+                  ? 'text-emerald-800'
+                  : comparisonType === 'MARGINAL_LEAD' || comparisonType === 'BOTH_POOR'
+                  ? 'text-amber-800'
+                  : 'text-zinc-600'
+              }`}>
                 Forensic Audit Verdict
               </span>
-              <p className="text-sm font-semibold text-emerald-950 mt-0.5">
-                {winnerText}
+              <p className={`text-sm font-semibold mt-0.5 ${
+                comparisonType === 'CLEAR_WINNER'
+                  ? 'text-emerald-950'
+                  : comparisonType === 'MARGINAL_LEAD' || comparisonType === 'BOTH_POOR'
+                  ? 'text-amber-950'
+                  : 'text-zinc-900'
+              }`}>
+                {verdictText}
               </p>
             </div>
           </div>
@@ -287,7 +348,10 @@ export const CompareProducts: React.FC = () => {
           errorA,
           handleScanA,
           () => setProductA(null),
+          winnerProduct === 'A',
           winnerProduct === 'A'
+            ? (comparisonType === 'CLEAR_WINNER' ? 'SUPERIOR' : (comparisonType === 'MARGINAL_LEAD' ? 'MARGINAL' : null))
+            : null
         )}
         {renderProductCard(
           'PRODUCT 2',
@@ -296,7 +360,10 @@ export const CompareProducts: React.FC = () => {
           errorB,
           handleScanB,
           () => setProductB(null),
+          winnerProduct === 'B',
           winnerProduct === 'B'
+            ? (comparisonType === 'CLEAR_WINNER' ? 'SUPERIOR' : (comparisonType === 'MARGINAL_LEAD' ? 'MARGINAL' : null))
+            : null
         )}
       </div>
     </div>

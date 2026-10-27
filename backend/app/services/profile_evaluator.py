@@ -142,10 +142,14 @@ def evaluate_profile_safety_offline(
             penalty_points += 20
             has_severe_violation = True
 
-    # Calculate Verdict
-    if has_severe_violation:
+    # Adjust health score dynamically based on profile penalties (capped at min 10)
+    orig_score = getattr(base_product, "health_score", 50)
+    adjusted_score = max(10, orig_score - penalty_points) if penalty_points > 0 else orig_score
+
+    # Calculate Verdict based on profile contraindications and overall nutritional integrity
+    if has_severe_violation or adjusted_score < 45:
         verdict = "AVOID (VIOLATES PROFILE)"
-    elif has_moderate_warning:
+    elif has_moderate_warning or adjusted_score < 70:
         verdict = "CAUTION"
     else:
         verdict = "SAFE FOR YOU"
@@ -168,10 +172,6 @@ def evaluate_profile_safety_offline(
             ing_dict["personalized_warning"] = " • ".join(warns)
             ing_dict["concern_level"] = "HIGH"
         updated_ingredients.append(ing_dict)
-
-    # Adjust health score dynamically based on profile penalties (capped at min 10)
-    orig_score = getattr(base_product, "health_score", 50)
-    adjusted_score = max(10, orig_score - penalty_points) if penalty_points > 0 else orig_score
 
     return {
         "personalized_verdict": verdict,
