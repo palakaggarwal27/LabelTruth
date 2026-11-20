@@ -10,7 +10,6 @@ import { ScoreCard } from '@/components/Results/ScoreCard';
 import { RedFlagsCard } from '@/components/Results/RedFlagsCard';
 import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
 import { AlternativeCard } from '@/components/Results/AlternativeCard';
-import { LiveInspectionStream } from '@/components/Scanner/LiveInspectionStream';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan, discoverAlternatives, evaluateProfileSafety, smartScanMultiProfile, resetBackendCache } from '@/lib/api';
@@ -447,10 +446,15 @@ export default function ScanPage() {
           )}
 
           {loading && (
-            <LiveInspectionStream
-              title="Forensic Nutritional Audit in Progress"
-              subtitle="Auditing label against FSSAI 2020 descending weight & ICMR-NIN 2024 thresholds"
-            />
+            <div className="mt-6 p-6 border border-zinc-200 bg-zinc-50/80 rounded-md text-center flex flex-col items-center justify-center gap-2 shadow-sm">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
+                <RefreshCw className="w-4 h-4 animate-spin text-zinc-800" />
+                <span>Forensic Nutritional Audit in Progress</span>
+              </div>
+              <p className="text-[11px] font-mono text-zinc-500 animate-pulse">
+                Auditing label ingredients against FSSAI 2020 standards &amp; ICMR-NIN thresholds...
+              </p>
+            </div>
           )}
 
           {error && (

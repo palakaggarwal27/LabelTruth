@@ -17,6 +17,5 @@ HOST = os.getenv('HOST', '0.0.0.0')
 # Centralized active Gemini models supporting multimodal vision and structured JSON
 GEMINI_ACTIVE_MODELS = [
     "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-lite-latest",
+    "gemini-3.5-flash",
 ]

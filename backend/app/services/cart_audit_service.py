@@ -459,104 +459,56 @@ class CartAuditService:
             if not concerns and getattr(analysis_res, "simple_summary", None):
                 concerns.append(analysis_res.simple_summary[:120])
         else:
-            # Deterministic clinical fallback with rich category-calibrated evaluation
-            p_lower = p_name.lower()
-            concerns = []
-            meds = [m.lower() for m in (user_profile.medical_conditions or [])]
+            # Deterministic clinical fallback: piecewise mathematical scoring and profile clinical diagnosis
+            import re
+            from app.services.scoring_engine import compute_piecewise_health_score
+            from app.schemas.analysis import IngredientItem, LabelAnalysisResult
+            from app.services.profile_evaluator import evaluate_profile_safety_offline
 
-            # Try parsing Back-of-Pack ingredients if available via TinyFish
-            if bop_text and len(bop_text) > 20:
-                try:
-                    from app.services.scoring_engine import compute_piecewise_health_score, is_whole_food_matrix
-                    score_dict = compute_piecewise_health_score(
-                        nutrition=None,
-                        ingredients=[],
-                        integrity=None,
-                        deceptive_claims=[],
-                        product_name=p_name
-                    )
-                    base_score = score_dict.get("final_health_score", 50)
-                    concerns.append("Evaluated against authentic back-of-pack packaging panel")
-                except Exception:
-                    base_score = 48
+            parsed_ingredients = []
+            if bop_text and len(bop_text) > 10:
+                raw_items = [i.strip() for i in re.split(r'[,;•\n\t]+', bop_text) if i.strip()]
+                for raw_i in raw_items[:15]:
+                    parsed_ingredients.append(IngredientItem(ingredient=raw_i, purpose="Ingredient", concern_level="LOW"))
             else:
-                # Category-calibrated baseline scoring
-                if any(k in p_lower for k in ["biscuit", "cookie", "cake", "rusk", "wafer"]):
-                    base_score = 40
-                    concerns.append("Refined wheat flour (Maida) & palm oil formulation")
-                    if any("acidity" in m or "gerd" in m for m in meds):
-                        concerns.append("Souring agents / acidity triggers (-10 pts penalty)")
-                        base_score -= 10
-                elif any(k in p_lower for k in ["cola", "pepsi", "coke", "soda", "fizzy", "dew", "sprite"]):
-                    base_score = 22
-                    concerns.append("High added liquid sugars (10.6g/100ml) & phosphoric acid")
-                    if any("acidity" in m or "gerd" in m for m in meds):
-                        concerns.append("Carbonation & phosphoric acid stimulate gastric reflux (-15 pts)")
-                        base_score -= 15
-                elif any(k in p_lower for k in ["bhujia", "chips", "kurkure", "namkeen", "sev", "puff", "crisp"]):
-                    base_score = 32
-                    concerns.append("Deep fried in palm oil with excessive sodium & synthetic INS flavorings")
-                    if any("hypertension" in m for m in meds):
-                        concerns.append("High sodium worsens arterial blood pressure (-10 pts)")
-                        base_score -= 10
-                    if any("acidity" in m or "gerd" in m for m in meds):
-                        concerns.append("Deep-fried trans-fat matrix provokes acid reflux (-10 pts)")
-                        base_score -= 10
-                elif any(k in p_lower for k in ["bournvita", "horlicks", "complan", "boost"]):
-                    base_score = 35
-                    concerns.append("Over 50% added sugars and maltodextrin (GI 110)")
-                    if any("diabetes" in m for m in meds):
-                        concerns.append("High glycemic surge risk for diabetes (-20 pts)")
-                        base_score -= 15
-                elif any(k in p_lower for k in ["noodle", "maggi", "pasta"]):
-                    base_score = 34
-                    concerns.append("Refined maida block flash-fried in palm oil with MSG flavor mix")
-                elif any(k in p_lower for k in ["juice", "real", "tropicana", "slice", "maaza", "frooti"]):
-                    base_score = 48
-                    concerns.append("Concentrated liquid fruit sugars (low dietary fiber)")
-                    if any("diabetes" in m for m in meds):
-                        concerns.append("High glycemic fructose surge (-14 pts)")
-                        base_score -= 14
-                elif any(k in p_lower for k in ["milk", "curd", "dahi", "paneer"]):
-                    base_score = 82
-                    concerns.append("Nutrient-dense dairy staple, natural animal protein")
-                elif any(k in p_lower for k in ["ghee", "butter"]):
-                    base_score = 78
-                    concerns.append("Traditional culinary fat, check saturated fat portion")
-                    if any("cholesterol" in m or "cardiac" in m or "heart" in m for m in meds):
-                        concerns.append("Saturated lipid density restriction (-12 pts)")
-                        base_score -= 12
-                elif any(k in p_lower for k in ["atta", "dal", "flour", "rice", "pulses"]):
-                    base_score = 85
-                    concerns.append("Wholesome primary kitchen staple, high complex carbohydrates")
-                elif any(k in p_lower for k in ["oats", "muesli", "granola"]):
-                    base_score = 76
-                    concerns.append("Whole-grain dietary fiber matrix")
-                elif any(k in p_lower for k in ["chocolate", "candy", "sweet", "mithai"]):
-                    base_score = 36
-                    concerns.append("High refined cane sugar and emulsifier matrix")
-                    if any("diabetes" in m for m in meds):
-                        concerns.append("High glycemic risk for diabetes (-15 pts)")
-                        base_score -= 15
-                elif any(k in p_lower for k in ["ketchup", "sauce", "mayonnaise"]):
-                    base_score = 38
-                    concerns.append("Chemical preservatives (INS 211) & high sodium")
-                elif any(k in p_lower for k in ["almond", "cashew", "walnut", "makhana", "seeds"]):
-                    base_score = 88
-                    concerns.append("Nutrient-dense natural whole food, plant protein & antioxidants")
+                # Deduce initial components from product name terms
+                name_tokens = [w.strip() for w in p_name.replace("-", " ").replace("/", " ").split() if len(w.strip()) > 2]
+                for tok in name_tokens:
+                    parsed_ingredients.append(IngredientItem(ingredient=tok, purpose="Component", concern_level="LOW"))
+
+            try:
+                score_dict = compute_piecewise_health_score(
+                    nutrition=None,
+                    ingredients=parsed_ingredients,
+                    integrity=None,
+                    deceptive_claims=[],
+                    product_name=p_name
+                )
+                computed_score = score_dict.get("final_health_score", 50)
+            except Exception:
+                computed_score = 50
+
+            mock_base = LabelAnalysisResult(
+                product_name=p_name,
+                health_score=computed_score,
+                base_health_score=computed_score,
+                personalized_verdict="SAFE FOR YOU",
+                simple_summary=f"Packaged food formulation: {p_name}",
+                ingredient_breakdown=parsed_ingredients
+            )
+
+            # Re-evaluate against user profile including Severe Allergy 0-score protocol
+            prof_eval = evaluate_profile_safety_offline(mock_base, user_profile)
+            item_score = prof_eval.get("adjusted_health_score", computed_score)
+            verdict = prof_eval.get("personalized_verdict", "CAUTION")
+            concerns = prof_eval.get("contraindications", [])
+            if not concerns:
+                if item_score < 45:
+                    concerns.append("Industrial ultra-processed profile / low nutritional density")
+                elif item_score < 75:
+                    concerns.append("Moderate nutritional profile")
                 else:
-                    # Dynamically calibrate based on product name hash to ensure unique, honest scoring
-                    name_hash_offset = (abs(hash(p_name)) % 9) - 4
-                    base_score = 54 + name_hash_offset
-                    concerns.append("Packaged formulation with moderate industrial additives")
-
-            item_score = max(10, min(100, base_score))
-            if item_score >= 75:
-                verdict = "SAFE FOR YOU"
-            elif item_score >= 45:
-                verdict = "CAUTION"
-            else:
-                verdict = "AVOID (VIOLATES PROFILE)"
+                    concerns.append("Clean whole food formulation")
 
         # 4. Find genuinely better specific alternative using Gemini AI
         category = self._detect_category(p_name)
