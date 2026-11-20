@@ -114,12 +114,64 @@ export const smartScanMultiProfile = async (
   formData.append('pincode', pincode || '110001');
   formData.append('profiles', JSON.stringify(profiles.slice(0, 3)));
 
-  const res = await apiClient.post<MultiProfileScanResult>('/api/smart-scan-multi-profile', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
-  return res.data;
+  try {
+    const res = await apiClient.post<MultiProfileScanResult>('/api/smart-scan-multi-profile', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data;
+  } catch (err: unknown) {
+    const errorObj = err as { response?: { status?: number } };
+    // Graceful fallback if backend server was not restarted with the newly registered multi-profile endpoint:
+    if (errorObj.response?.status === 404) {
+      const baseProduct = await smartScan(
+        { query: input.query, imageFile: input.imageFile, pincode },
+        profiles[0]
+      );
+      const insights = await Promise.all(
+        profiles.slice(0, 3).map(async (prof) => {
+          const evalRes = await evaluateProfileSafety(baseProduct.product_name, prof, baseProduct);
+          return {
+            profile_id: prof.id || 'default',
+            profile_name: prof.name || 'Member',
+            health_score: evalRes.adjusted_health_score,
+            personalized_verdict: evalRes.personalized_verdict as import('@/types').PersonalizedVerdict,
+            personalized_summary: `Safety evaluation for ${prof.name}`,
+            contraindications: evalRes.contraindications || [],
+            ingredient_warnings: evalRes.ingredient_breakdown || [],
+          };
+        })
+      );
+      const scores = insights.map((i) => i.health_score);
+      const minScore = Math.min(...scores);
+      const hhVerdict =
+        minScore >= 70
+          ? 'SAFE FOR HOUSEHOLD'
+          : minScore >= 40
+          ? 'PARTIALLY SAFE (CAUTION)'
+          : 'UNSAFE FOR FAMILY MEMBERS';
+
+      return {
+        product_name: baseProduct.product_name,
+        base_product: baseProduct,
+        profiles_audited: insights,
+        household_verdict: hhVerdict as
+          | 'SAFE FOR HOUSEHOLD'
+          | 'PARTIALLY SAFE (CAUTION)'
+          | 'UNSAFE FOR FAMILY MEMBERS',
+        household_summary: `Household evaluation across ${insights.length} family profiles.`,
+        comparison_matrix: insights.map((i) => ({
+          profile_name: i.profile_name,
+          health_score: i.health_score,
+          personalized_verdict: i.personalized_verdict,
+          key_issue:
+            i.contraindications.length > 0 ? i.contraindications[0] : 'No critical issue',
+        })),
+      };
+    }
+    throw err;
+  }
 };
 
 export const sendChatMessage = async (
