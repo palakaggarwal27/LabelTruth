@@ -5,6 +5,7 @@ import { auditCart } from '@/lib/api';
 import { CartAuditResponse, CartItemAudit, LabelAnalysisResult, PersonalizedVerdict, ConcernLevel } from '@/types';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { ProductInsightsModal } from '@/components/Results/ProductInsightsModal';
+import { LiveInspectionStream } from '@/components/Scanner/LiveInspectionStream';
 import { 
   ShoppingCart, 
   UploadCloud, 
@@ -351,6 +352,14 @@ export const CartAuditView: React.FC = () => {
                 </>
               )}
             </button>
+
+            {loading && (
+              <LiveInspectionStream
+                isCart={true}
+                title="Forensic Cart Audit & Transformation Stream"
+                subtitle="Retrieving authentic packaging panels via TinyFish and calculating cleaner swaps"
+              />
+            )}
           </form>
         </div>
       ) : (

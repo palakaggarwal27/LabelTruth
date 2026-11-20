@@ -10,6 +10,7 @@ import { ScoreCard } from '@/components/Results/ScoreCard';
 import { RedFlagsCard } from '@/components/Results/RedFlagsCard';
 import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
 import { AlternativeCard } from '@/components/Results/AlternativeCard';
+import { LiveInspectionStream } from '@/components/Scanner/LiveInspectionStream';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { smartScan, discoverAlternatives, evaluateProfileSafety, smartScanMultiProfile, resetBackendCache } from '@/lib/api';
@@ -38,30 +39,6 @@ export default function ScanPage() {
   const [activeProfileTab, setActiveProfileTab] = useState<string>('household');
   const [history, setHistory] = useState<ScannedHistoryItem[]>([]);
   const [demoMode, setDemoMode] = useState(false);
-  const [auditStep, setAuditStep] = useState<string>("Initializing forensic scan...");
-
-  // Progressive audit stage timer for realistic and responsive user feedback
-  React.useEffect(() => {
-    if (!loading) {
-      setAuditStep("Initializing forensic scan...");
-      return;
-    }
-    const timer1 = setTimeout(() => {
-      setAuditStep("Extracting optical text & isolating ingredients panel...");
-    }, 1200);
-    const timer2 = setTimeout(() => {
-      setAuditStep("Screening against FSSAI 2020 descending weight & INS codes...");
-    }, 3800);
-    const timer3 = setTimeout(() => {
-      setAuditStep("Synthesizing clinical metabolic impact & quick-commerce alternatives...");
-    }, 7200);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-    };
-  }, [loading]);
 
   // Instant Profile Re-evaluation when family profile is switched
   React.useEffect(() => {
@@ -468,15 +445,10 @@ export default function ScanPage() {
           )}
 
           {loading && (
-            <div className="mt-6 p-4 border border-zinc-200 bg-zinc-50 rounded-md text-center flex flex-col items-center justify-center gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
-                <RefreshCw className="w-4 h-4 animate-spin text-zinc-900" />
-                <span>Forensic Nutritional Audit in Progress</span>
-              </div>
-              <p className="text-[11px] font-mono text-zinc-600 animate-pulse">
-                {auditStep}
-              </p>
-            </div>
+            <LiveInspectionStream
+              title="Forensic Nutritional Audit in Progress"
+              subtitle="Auditing label against FSSAI 2020 descending weight & ICMR-NIN 2024 thresholds"
+            />
           )}
 
           {error && (
