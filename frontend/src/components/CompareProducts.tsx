@@ -632,7 +632,7 @@ export const CompareProducts: React.FC = () => {
 
       {/* Comparison Verdict Banner */}
       {comparisonResult && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-in-up">
           <div
             className={`p-5 rounded-lg border shadow-sm ${
               isWinnerA || isWinnerB

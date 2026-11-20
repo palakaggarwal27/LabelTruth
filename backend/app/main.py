@@ -701,48 +701,37 @@ async def discover_alternatives_endpoint(payload: DiscoverAlternativesRequest):
     current_score = payload.current_health_score
     pincode = payload.pincode or "110001"
 
-    CATEGORY_CANDIDATES = {
-        "juice": ["Raw Pressery Cold Pressed Valencia Orange", "Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water"],
-        "fruit": ["Raw Pressery Cold Pressed Valencia Orange", "Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water"],
-        "beverage": ["Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water", "Atmosphere Brew Sparkling Kombucha"],
-        "drink": ["Paper Boat Coconut Water", "Raw Pressery Cold Pressed Valencia Orange", "Epigamia Greek Yogurt Smoothie"],
-        "cola": ["Atmosphere Brew Sparkling Kombucha", "Perrier Sparkling Natural Mineral Water", "Raw Pressery Cold Pressed Juice"],
-        "soda": ["Perrier Sparkling Natural Mineral Water", "Atmosphere Brew Sparkling Kombucha"],
-        "health drink": ["Early Foods Sprouted Ragi & Almond Cocoa Mix", "Little Joys Nutrition Mix"],
-        "malt": ["Early Foods Sprouted Ragi Almond Cocoa", "Slurrp Farm Superfoods Chocolate Powder"],
-        "namkeen": ["Slurrp Farm Ragi Puffs", "Open Secret Roasted Makhana", "Sattviko Makhana Pudina"],
-        "snack": ["Slurrp Farm Ragi Puffs", "True Elements Multigrain Snacks", "Open Secret Makhana"],
-        "chips": ["The Whole Truth Baked Potato Chips", "TagZ Popped Chips", "BRB Popped Chips"],
-        "biscuit": ["The Whole Truth 100% Sourdough Crackers", "Early Foods Organic Ragi Cookies", "Slurrp Farm Millet Cookies"],
-        "cookies": ["Early Foods Multi-Grain Jaggery Cookies", "Slurrp Farm Millet Choco Chip Cookies"],
-        "noodles": ["Slurrp Farm Foxtail Millet Noodles", "Masterchow Hakka Whole Wheat Noodles", "WickedGud Multigrain Noodles"],
-        "cereal": ["The Whole Truth 100% Rolled Oats", "True Elements Rolled Oats", "Slurrp Farm Millet Muesli"],
-        "oats": ["The Whole Truth Rolled Oats", "True Elements Rolled Oats"],
-        "bread": ["The Whole Truth 100% Whole Wheat Bread", "Early Foods Organic Multi-Grain Bread", "Bakers Dozen Sourdough Bread"],
-        "chocolate": ["The Whole Truth 71% Dark Chocolate", "Paul and Mike Dark Chocolate"],
-        "cheese": ["Akshayakalpa Organic Artisan Mozzarella", "Country Delight Pure Cheese"],
-        "butter": ["Country Delight Fresh Butter", "Akshayakalpa Organic Butter"],
-        "ghee": ["Two Brothers Organic A2 Cultured Ghee", "Country Delight Pure Desi Ghee", "Akshayakalpa Organic Ghee"],
-        "oil": ["Two Brothers Organic Cold-Pressed Mustard Oil", "Wood Pressed Coconut Oil", "Cold Pressed Groundnut Oil"],
-        "paneer": ["Akshayakalpa Organic Malai Paneer", "Country Delight Fresh Paneer"],
-        "milk": ["Country Delight Pure Cow Milk", "Akshayakalpa Organic A2 Cow Milk", "Amul Organic Cow Milk"],
-        "yogurt": ["Epigamia Natural Greek Yogurt", "Milky Mist Greek Yogurt Plain"],
-        "jam": ["The Whole Truth 100% Fruit Spread", "Bhuira Jam Homemade Apple & Cinnamon"],
-        "ketchup": ["The Whole Truth No-Refined-Sugar Tomato Ketchup", "Naagin Original Hot Sauce"],
-        "peanut butter": ["Pintola 100% Pure Natural Peanut Butter", "The Whole Truth 100% Peanut Butter Dark Chocolate"]
-    }
+    # Pure Dynamic Gemini Clean Brand Discovery (Zero Hardcoded Alternatives)
+    unique_cands = []
+    try:
+        cand_prompt = f"""You are a clean-food ingredient and packaged grocery forensic expert in India.
+Target Product: "{p_name}"
+Category: "{category}"
+Current Health Score: {current_score}/100
 
-    candidates_to_try = []
-    cat_lower = (category or "").lower()
-    name_lower = p_name.lower()
+Identify 2 to 3 real, commercially available clean-label packaged food or beverage products currently sold in India on platforms like Blinkit, Zepto, Swiggy Instamart, or Amazon India.
 
-    for key, cands in CATEGORY_CANDIDATES.items():
-        if key in cat_lower or key in name_lower:
-            candidates_to_try.extend(cands)
-            break
+CRITICAL RULES:
+1. CATEGORY CONSISTENCY: The alternatives MUST be in the EXACT SAME product category as "{p_name}".
+   - If fruit juice -> cold-pressed pure juices or pure tender coconut water (STRICTLY NO protein bars, oats, or savory snacks).
+   - If biscuits/cookies -> ragi/millet cookies with zero palm oil and zero refined sugar.
+   - If chips/namkeen -> roasted makhana, popped potato chips, or baked millet snacks.
+   - If dairy/milk -> certified organic A2 cow milk.
+   - If bread -> 100% whole wheat sourdough or preservative-free bakery bread.
+   - If soft drink/cola -> sparkling natural water or fermented kombucha.
+2. CLEAN FORMULATION: Each alternative must have zero palm oil, zero artificial sweeteners, significantly less or zero refined sugar, and no harmful chemical preservatives.
+3. DIFFERENT BRAND: Do NOT recommend the same brand as "{p_name}".
 
-    # Strictly avoid cross-category mismatches (never default juices or milk to protein bars/oats)
-    unique_cands = list(dict.fromkeys(candidates_to_try))[:3]
+Return ONLY a JSON list of 2 to 3 product brand and item names:
+["Brand Name Product 1", "Brand Name Product 2"]
+"""
+        json_resp = await asyncio.to_thread(cart_audit_service._call_gemini_text, cand_prompt, 256)
+        if json_resp:
+            parsed = json.loads(json_resp)
+            if isinstance(parsed, list):
+                unique_cands = [str(x).strip() for x in parsed if isinstance(x, str) and len(str(x).strip()) > 3][:3]
+    except Exception as e:
+        logger.warning(f"Dynamic Gemini alternative candidate generation notice: {e}")
 
     verified_alts = []
     if unique_cands:

@@ -517,65 +517,17 @@ class CartAuditService:
         )
 
         # Safety check: only use alternative if score is strictly better
+        # 4. Find genuinely better specific alternative dynamically using Gemini AI & TinyFish
+        category = self._detect_category(p_name)
+        clean_alt_candidate = await self._find_alternative_with_gemini(
+            p_name, category, item_score, store_name, user_profile
+        )
+
+        # Safety check: only use alternative if score is strictly better
         if clean_alt_candidate and clean_alt_candidate.health_score <= item_score:
             clean_alt_candidate = None
 
-        # Deterministic category-specific commercial product swaps
-        if not clean_alt_candidate and item_score < 75:
-            OFFLINE_CATEGORY_ALTS = {
-                "fruit juice/drink": ("Raw Pressery Cold Pressed Valencia Orange Juice", 86, "100% cold-pressed fruit, zero added cane sugar, zero preservatives."),
-                "namkeen/savory snack": ("Slurrp Farm Ragi Puffs (Cheese & Herbs)", 88, "Baked finger millet & jowar, zero palm oil, zero synthetic MSG."),
-                "chips/crisps": ("The Whole Truth Baked Potato Chips", 82, "Baked, cold-pressed oil, zero palmolein, zero artificial preservatives."),
-                "biscuit/cracker": ("The Whole Truth 100% Whole Wheat Sourdough Crackers", 89, "100% whole wheat sourdough, zero maida, zero palm oil."),
-                "cookies": ("Early Foods Organic Multi-Grain Jaggery Cookies", 87, "Organic jaggery and stone-ground millets, zero refined sugar."),
-                "cola/carbonated drink": ("Atmosphere Brew Sparkling Raw Kombucha", 91, "Fermented probiotic tea, zero phosphoric acid."),
-                "soda/carbonated water": ("Perrier Sparkling Natural Mineral Water", 91, "100% natural carbonated mineral water, zero sugar, zero calories, zero additives."),
-                "energy drink": ("Raw Pressery Tender Coconut Water", 92, "Natural isotonic electrolyte beverage, zero synthetic taurine/caffeine."),
-                "malt health drink": ("Early Foods Sprouted Ragi & Almond Cocoa Mix", 93, "100% sprouted ragi and almond, zero maltodextrin, zero refined sugar."),
-                "instant noodles": ("Slurrp Farm Foxtail Millet Noodles", 88, "Sun-dried non-fried millet noodles, zero maida, clean seasoning."),
-                "pasta": ("Slurrp Farm Multigrain Pasta", 86, "Millet & durum wheat semolina, zero artificial additives."),
-                "breakfast cereal": ("The Whole Truth 100% Gluten-Free Rolled Oats", 94, "Single-ingredient rolled oats, high soluble fiber."),
-                "chocolate/candy": ("The Whole Truth 71% Dark Chocolate", 90, "Cocoa beans and dates only, zero refined cane sugar, zero palm oil."),
-                "cheese": ("Akshayakalpa Organic Artisan Mozzarella", 92, "100% certified organic A2 milk, zero synthetic emulsifying salts."),
-                "butter/spread": ("Country Delight Fresh Churned White Butter", 88, "Traditional churned butter, zero synthetic coloring, zero artificial emulsifiers."),
-                "bread/bakery": ("The Whole Truth 100% Whole Wheat Bread", 88, "Zero maida, zero palm oil, zero chemical dough conditioners."),
-                "cooking oil": ("Two Brothers Organic Cold-Pressed Groundnut/Mustard Oil", 90, "Wood-pressed, zero chemical solvents, unrefined natural lipids."),
-                "paneer": ("Akshayakalpa Organic Malai Paneer", 92, "Organic certified cow milk, zero synthetic acidifiers."),
-                "milk": ("Country Delight Pure Cow Milk", 89, "Unadulterated fresh milk, tested daily, zero chemical neutralizers."),
-                "yogurt/curd": ("Epigamia Natural Greek Yogurt Plain", 91, "High protein, zero added sugars, live active cultures."),
-                "ghee": ("Two Brothers Organic A2 Cultured Ghee", 93, "Bilona method A2 cow milk ghee, rich in butyric acid."),
-                "sauce/condiment": ("The Whole Truth No-Refined-Sugar Tomato Ketchup", 87, "Sweetened with dates and organic tomatoes, zero refined cane sugar."),
-                "foxnuts/makhana": ("Open Secret Roasted Makhana (Foxnuts)", 88, "Roasted superfood, zero palm oil, rich in plant antioxidants."),
-                "nuts/dry fruits": ("True Elements Raw Almonds & Walnuts", 93, "100% unroasted raw nuts, zero added sodium or preservatives.")
-            }
-
-            matched_cat = category
-            if matched_cat not in OFFLINE_CATEGORY_ALTS:
-                p_low = p_name.lower()
-                for cat_k in OFFLINE_CATEGORY_ALTS.keys():
-                    keywords = cat_k.replace('/', ' ').split()
-                    if any(kw in p_low for kw in keywords if len(kw) > 3):
-                        matched_cat = cat_k
-                        break
-
-            if matched_cat in OFFLINE_CATEGORY_ALTS:
-                fb_name, fb_score, fb_benefit = OFFLINE_CATEGORY_ALTS[matched_cat]
-                if fb_score > item_score:
-                    clean_alt_candidate = HealthierAlternative(
-                        name=fb_name,
-                        product_name=fb_name,
-                        health_score=fb_score,
-                        key_benefit=fb_benefit,
-                        price_comparison="Comparable",
-                        personalized_fit="Verified cleaner formulation for your health profile.",
-                        direct_pdp_url=f"https://www.zepto.com/search?query={urllib.parse.quote_plus(fb_name)}",
-                        is_direct_pdp=False,
-                        pincode_available=True,
-                        type="CLEAN_COMMERCIAL",
-                        reason=fb_benefit
-                    )
-
-        # Fallback to fresh whole-food YouTube recipe ONLY if no cleaner commercial product is available
+        # Fallback to fresh whole-food YouTube recipe ONLY if no cleaner commercial product is found and item needs improvement
         if not clean_alt_candidate and item_score < 75:
             topic = category if category and category != "packaged food" else p_name
             encoded_query = urllib.parse.quote_plus(f"how to make fresh {topic} at home healthy recipe")
@@ -590,7 +542,8 @@ class CartAuditService:
                 price_comparison="Inexpensive",
                 personalized_fit="Optimal natural nutrition without synthetic preservatives.",
                 recipe_url=youtube_url,
-                direct_pdp_url=youtube_url,
+                direct_pdp_url=None,
+                store_url=None,
                 is_direct_pdp=False,
                 pincode_available=True,
                 type="HOMEMADE_RECIPE",
@@ -601,13 +554,13 @@ class CartAuditService:
             product_name=p_name,
             health_score=item_score,
             personalized_verdict=verdict,
-            simple_summary=concerns[0] if concerns else f"Audited {p_name} for health profile.",
-            deceptive_claims_flagged=[],
-            fssai_violations=[],
-            ingredient_breakdown=[
-                IngredientItem(ingredient=c.split(':')[0], purpose="Flagged Factor", concern_level="HIGH" if item_score < 45 else "MEDIUM")
+            simple_summary=concerns[0] if concerns else f"Audited {p_name} against FSSAI & ICMR-NIN guidelines.",
+            deceptive_claims_flagged=[c for c in concerns if any(k in c.lower() for k in ["sugar", "refined", "misleading", "claim", "split", "maltodextrin"])],
+            fssai_violations=[c for c in concerns if any(k in c.lower() for k in ["fssai", "ins", "preservative", "dye", "trans fat", "hydrogenated", "vanaspati"])],
+            ingredient_breakdown=parsed_ingredients if parsed_ingredients else [
+                IngredientItem(ingredient=c.split(':')[0], purpose="Audited Factor", concern_level="HIGH" if item_score < 45 else "MEDIUM")
                 for c in concerns
-            ] if concerns else [],
+            ],
             nutrition_card=None,
             healthier_alternative=clean_alt_candidate,
             clean_alternatives=[clean_alt_candidate] if clean_alt_candidate else [],

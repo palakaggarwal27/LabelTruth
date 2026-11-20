@@ -446,14 +446,17 @@ export default function ScanPage() {
           )}
 
           {loading && (
-            <div className="mt-6 p-6 border border-zinc-200 bg-zinc-50/80 rounded-md text-center flex flex-col items-center justify-center gap-2 shadow-sm">
+            <div className="mt-6 p-6 border border-zinc-200 bg-zinc-50/80 rounded-md text-center flex flex-col items-center justify-center gap-2.5 shadow-sm">
               <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
-                <RefreshCw className="w-4 h-4 animate-spin text-zinc-800" />
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
                 <span>Forensic Nutritional Audit in Progress</span>
               </div>
-              <p className="text-[11px] font-mono text-zinc-500 animate-pulse">
+              <p className="text-[11px] font-mono text-zinc-600">
                 Auditing label ingredients against FSSAI 2020 standards &amp; ICMR-NIN thresholds...
               </p>
+              <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1">
+                <div className="w-full h-full animate-shimmer-bar rounded-full" />
+              </div>
             </div>
           )}
 
@@ -473,7 +476,7 @@ export default function ScanPage() {
           : null;
 
         return (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in-up">
             {/* Action Bar */}
             <div className="flex items-center justify-between">
               <span className="text-xs font-mono uppercase tracking-wider text-zinc-500">

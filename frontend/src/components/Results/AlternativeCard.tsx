@@ -110,7 +110,7 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
                 </p>
 
                 {/* Action Button: Direct PDP vs YouTube Recipe Search */}
-                {alt.is_direct_pdp && alt.direct_pdp_url ? (
+                {alt.type !== 'HOMEMADE_RECIPE' && alt.is_direct_pdp && alt.direct_pdp_url ? (
                   <div className="mt-2.5">
                     <button
                       onClick={() => window.open(alt.direct_pdp_url, '_blank')}

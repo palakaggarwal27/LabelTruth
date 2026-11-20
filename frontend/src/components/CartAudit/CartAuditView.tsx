@@ -18,8 +18,6 @@ import {
   CheckCircle2, 
   AlertCircle,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
   X,
   Image as ImageIcon,
   Eye
@@ -141,15 +139,6 @@ export const CartAuditView: React.FC = () => {
     return 'bg-rose-100 text-rose-800 border border-rose-300';
   };
 
-  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
-  const toggleExpanded = (idx: number) => {
-    setExpandedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -335,14 +324,9 @@ export const CartAuditView: React.FC = () => {
               className="w-full py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
             >
               {loading ? (
-                <div className="flex flex-col items-center gap-1.5 py-0.5">
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span className="font-semibold text-xs tracking-wide">Forensic Cart Audit in Progress</span>
-                  </div>
-                  <span className="text-[11px] font-mono text-zinc-300 font-normal animate-pulse">
-                    {auditStep}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Auditing Cart...</span>
                 </div>
               ) : (
                 <>
@@ -355,18 +339,21 @@ export const CartAuditView: React.FC = () => {
             {loading && (
               <div className="mt-4 p-5 border border-zinc-200 bg-zinc-50/80 rounded-md text-center flex flex-col items-center justify-center gap-2 shadow-sm">
                 <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900">
-                  <RefreshCw className="w-4 h-4 animate-spin text-zinc-800" />
-                  <span>Auditing Cart Items &amp; Packaging Panels</span>
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
+                  <span>Forensic Cart Audit in Progress</span>
                 </div>
-                <p className="text-[11px] font-mono text-zinc-500 animate-pulse">
-                  Screening ingredients against FSSAI guidelines and discovering healthier swaps...
+                <p className="text-[11px] font-mono text-zinc-600">
+                  {auditStep}
                 </p>
+                <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1">
+                  <div className="w-full h-full animate-shimmer-bar rounded-full" />
+                </div>
               </div>
             )}
           </form>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in-up">
           {/* Action Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -447,10 +434,9 @@ export const CartAuditView: React.FC = () => {
 
             <div className="space-y-3">
               {result.items.map((item, idx) => {
-                const isExpanded = expandedItems.has(idx);
-                // Extract 1-2 line concise summary for the compact view
-                const conciseSummary = item.key_concerns && item.key_concerns.length > 0
-                  ? item.key_concerns.slice(0, 2).join(' • ')
+                const keyConcerns = item.key_concerns || [];
+                const conciseSummary = keyConcerns.length > 0
+                  ? keyConcerns.slice(0, 2).join(' • ')
                   : 'Nutritional baseline verified. No high-risk industrial additives or profile conflicts detected.';
 
                 return (
@@ -490,34 +476,18 @@ export const CartAuditView: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* 1-2 Line Brief Description */}
+                        {/* Brief Summary */}
                         <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
                           {conciseSummary}
                         </p>
 
-                        {/* Details Toggle Button */}
-                        {item.key_concerns && item.key_concerns.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(idx)}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-700 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-2.5 py-1 rounded transition-colors"
-                          >
-                            <span>{isExpanded ? 'Close Forensic Audit' : 'View Full Forensic Audit'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
-
-                        {/* Expandable Clinical Details */}
-                        {isExpanded && item.key_concerns.length > 0 && (
-                          <div className="text-[11px] text-zinc-800 bg-rose-50/50 border border-rose-200/80 rounded-md p-3 space-y-1.5 animate-in fade-in duration-200">
-                            <span className="text-[10px] font-mono uppercase tracking-wider text-rose-800 font-bold block mb-1">
-                              Clinical Concerns & Additives:
+                        {/* Clinical observations displayed directly inside the card */}
+                        {keyConcerns.length > 0 && (
+                          <div className="text-[11px] text-zinc-800 bg-rose-50/60 border border-rose-200/70 rounded-md p-2.5 space-y-1">
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-rose-800 font-bold block mb-0.5">
+                              Clinical Observations:
                             </span>
-                            {item.key_concerns.map((c, cIdx) => (
+                            {keyConcerns.slice(0, 3).map((c, cIdx) => (
                               <div key={cIdx} className="flex items-start gap-1.5 text-zinc-800">
                                 <span className="text-rose-500 font-bold shrink-0">•</span>
                                 <span className="leading-relaxed">{c}</span>
@@ -526,14 +496,14 @@ export const CartAuditView: React.FC = () => {
                           </div>
                         )}
 
-                        {/* View Full Insights Action */}
+                        {/* View Forensic Audit Action (opens popup modal) */}
                         <button
                           type="button"
                           onClick={() => setInspectItem(item)}
-                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm w-fit"
+                          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold transition-colors cursor-pointer shadow-sm w-fit"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          <span>View Full Insights</span>
+                          <span>View Forensic Audit</span>
                         </button>
                       </div>
 
@@ -558,14 +528,15 @@ export const CartAuditView: React.FC = () => {
                             </p>
                           </div>
 
-                          {item.cleaner_alternative.recipe_url ? (
+                          {/* Action Button: Strictly YouTube recipe for homemade, NEVER store links */}
+                          {item.cleaner_alternative.type === 'HOMEMADE_RECIPE' ? (
                             <a
-                              href={item.cleaner_alternative.recipe_url}
+                              href={item.cleaner_alternative.recipe_url || `https://www.youtube.com/results?search_query=${encodeURIComponent('healthy homemade ' + (item.cleaner_alternative.name || item.product_name) + ' recipe')}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="self-start mt-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                              className="self-start mt-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                             >
-                              <span>View Recipe on YouTube</span>
+                              <span>Watch Verified Recipe on YouTube</span>
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           ) : item.cleaner_alternative.direct_pdp_url ? (
@@ -573,7 +544,7 @@ export const CartAuditView: React.FC = () => {
                               href={item.cleaner_alternative.direct_pdp_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="self-start mt-1 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                              className="self-start mt-1 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                             >
                               <span>Find on {result.store_name}</span>
                               <ExternalLink className="w-3 h-3" />

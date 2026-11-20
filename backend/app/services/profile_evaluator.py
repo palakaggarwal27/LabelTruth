@@ -203,12 +203,12 @@ def evaluate_profile_safety_offline(
         allergen_str = None
         allergy_warning = None
         adjusted_score = max(10, min(100, pure_base_score - penalty_points)) if penalty_points > 0 else pure_base_score
-        if has_severe_violation:
+        if has_severe_violation or adjusted_score < 45:
             verdict = "AVOID (VIOLATES PROFILE)"
-        elif penalty_points > 0:
-            verdict = "AVOID (VIOLATES PROFILE)" if adjusted_score < 45 else "CAUTION"
+        elif adjusted_score >= 75 and not has_severe_violation:
+            verdict = "SAFE FOR YOU"
         else:
-            verdict = "SAFE FOR YOU" if adjusted_score >= 70 else "CAUTION"
+            verdict = "CAUTION"
 
     # Produce updated personalized warnings on ingredients
     updated_ingredients = []
