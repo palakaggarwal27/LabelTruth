@@ -480,21 +480,115 @@ async def smart_scan_multi_profile(
         image_bytes = await image.read()
         await image.seek(0)
 
-    # 1. Check if base product exists in dual-key cache
-    base_product = find_in_base_cache(image_bytes=image_bytes, query_text=query)
+    # 1. Check if all requested profiles are already cached in dual-key audit cache
+    cached_base = find_in_base_cache(image_bytes=image_bytes, query_text=query)
+    all_cached_insights = []
+    if cached_base:
+        for p in user_profiles:
+            cached_item = find_in_audit_cache(image_bytes=image_bytes, query_text=query, profile=p)
+            if cached_item:
+                all_cached_insights.append(ProfileAuditInsight(
+                    profile_id=p.id or "default",
+                    profile_name=p.name or "Member",
+                    health_score=cached_item.health_score,
+                    personalized_verdict=cached_item.personalized_verdict,
+                    personalized_summary=cached_item.simple_summary,
+                    contraindications=[],
+                    ingredient_warnings=cached_item.ingredient_breakdown or []
+                ))
 
-    # 2. If not cached, run smart scan once with neutral profile to get un-penalized base food facts
-    if not base_product:
-        base_product = await smart_scan(
-            query=query,
-            image=image,
-            pincode=delivery_pincode,
-            demo_mode=demo_mode,
-            user_profile=UserProfile().model_dump_json()
+    if cached_base and len(all_cached_insights) == len(user_profiles):
+        logger.info("Serving simultaneous multi-profile scan from dual-key audit cache (zero credits)")
+        any_avoid = any(ins.personalized_verdict == "AVOID (VIOLATES PROFILE)" for ins in all_cached_insights)
+        any_caution = any(ins.personalized_verdict == "CAUTION" for ins in all_cached_insights)
+        hh_verdict = "UNSAFE FOR FAMILY MEMBERS" if any_avoid else ("PARTIALLY SAFE (CAUTION)" if any_caution else "SAFE FOR HOUSEHOLD")
+        violators = [ins.profile_name for ins in all_cached_insights if ins.personalized_verdict == "AVOID (VIOLATES PROFILE)"]
+        cautions = [ins.profile_name for ins in all_cached_insights if ins.personalized_verdict == "CAUTION"]
+        hh_summary = (
+            f"Not recommended for family purchase: violates health profile for {', '.join(violators)}."
+            if any_avoid
+            else (
+                f"Safe for some members, but exercise caution for {', '.join(cautions)}."
+                if any_caution
+                else "Safe for all evaluated family members with no major clinical contraindications."
+            )
+        )
+        return MultiProfileScanResult(
+            product_name=cached_base.product_name,
+            base_product=cached_base,
+            profiles_audited=all_cached_insights,
+            household_verdict=hh_verdict,
+            household_summary=hh_summary,
+            comparison_matrix=[
+                {
+                    "profile_name": ins.profile_name,
+                    "health_score": ins.health_score,
+                    "personalized_verdict": ins.personalized_verdict,
+                    "key_issue": "Low nutritional density" if ins.health_score < 45 else "Profile verified"
+                }
+                for ins in all_cached_insights
+            ]
         )
 
-    # Ensure clean un-penalized base facts for multi-profile evaluation
-    clean_base = base_product.model_copy(deep=True)
+    # 2. Run Gemini Multi-Profile Simultaneous Evaluation with separate prompt evaluation
+    multi_result = None
+    if image_bytes:
+        if gemini_vision_service.client or GEMINI_API_KEYS:
+            multi_result = await gemini_vision_service.analyze_multi_profile_image(
+                image_bytes=image_bytes,
+                profiles=user_profiles
+            )
+        elif cached_base:
+            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
+        else:
+            base_prod = await smart_scan(
+                query=query,
+                image=image,
+                pincode=delivery_pincode,
+                demo_mode=demo_mode,
+                user_profile=UserProfile().model_dump_json()
+            )
+            multi_result = create_multi_profile_result_offline(base_prod, user_profiles)
+    elif query and query.strip():
+        clean_query = query.strip()
+        from app.services.tinyfish_service import tinyfish_service
+        online_content = ""
+        effective_product_name = clean_query
+
+        if cached_base:
+            effective_product_name = cached_base.product_name
+            online_content = f"Product: {cached_base.product_name}\nIngredients: {', '.join([i.ingredient for i in cached_base.ingredient_breakdown or []])}\nNutrition: {cached_base.nutrition_card.model_dump_json() if cached_base.nutrition_card else ''}"
+        elif clean_query.startswith("http://") or clean_query.startswith("https://"):
+            url_title, bop_content = await tinyfish_service.search_and_fetch_bop_by_url(clean_query)
+            effective_product_name = url_title or clean_query
+            online_content = bop_content or ""
+        else:
+            online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
+
+        if gemini_vision_service.client or GEMINI_API_KEYS:
+            multi_result = await gemini_vision_service.analyze_multi_profile_text_query(
+                query=effective_product_name,
+                profiles=user_profiles,
+                online_content=online_content
+            )
+            if cached_base and multi_result:
+                multi_result.base_product = cached_base
+        elif cached_base:
+            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
+        else:
+            base_prod = await smart_scan(
+                query=query,
+                image=image,
+                pincode=delivery_pincode,
+                demo_mode=demo_mode,
+                user_profile=UserProfile().model_dump_json()
+            )
+            multi_result = create_multi_profile_result_offline(base_prod, user_profiles)
+    else:
+        raise HTTPException(status_code=400, detail="Please provide either a product label photo, product name, or quick-commerce link.")
+
+    # 3. Store clean base product in BASE_PRODUCT_CACHE and per-member results in AUDIT_CACHE
+    clean_base = multi_result.base_product.model_copy(deep=True)
     if getattr(clean_base, "base_health_score", None) is not None:
         clean_base.health_score = clean_base.base_health_score
     else:
@@ -503,10 +597,6 @@ async def smart_scan_multi_profile(
     for ing in clean_base.ingredient_breakdown or []:
         ing.personalized_warning = ""
 
-    # 3. Create multi-profile evaluation from clean baseline
-    multi_result = create_multi_profile_result_offline(clean_base, user_profiles)
-
-    # 4. Populate dual-key cache entries for all profiles audited
     for p in user_profiles:
         ins = next((i for i in multi_result.profiles_audited if i.profile_id == p.id or i.profile_name == p.name), None)
         prof_res = clean_base.model_copy(deep=True)

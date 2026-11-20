@@ -142,6 +142,25 @@ def evaluate_profile_safety_offline(
             penalty_points += 20
             has_severe_violation = True
 
+    # 11. Weight Loss / Calorie Deficit
+    if any(term in c for c in med_conditions for term in ["weight loss", "obesity", "fat loss", "calorie deficit"]):
+        if added_sugars > 5.0 or sat_fat > 5.0:
+            contraindications.append(f"High caloric load ({added_sugars}g sugar / {sat_fat}g saturated fat) disrupts calorie deficit.")
+            penalty_points += 15
+            has_moderate_warning = True
+
+    # 12. Child / Kid Profile
+    p_name_lower = (profile.name or "").lower()
+    if any(k in p_name_lower for k in ["kid", "child", "toddler"]) or any("child" in c for c in med_conditions):
+        if any(t in all_ing_text for t in ["ins 102", "ins 110", "ins 122", "ins 133", "tartrazine", "sunset yellow", "carmoisine", "aspartame", "sucralose", "ins 955", "caffeine"]):
+            contraindications.append("Contains synthetic food dyes/sweeteners contraindicated for pediatric growth.")
+            penalty_points += 25
+            has_severe_violation = True
+        elif added_sugars > 8.0:
+            contraindications.append(f"Excessive added sugar ({added_sugars}g) exceeds pediatric thresholds.")
+            penalty_points += 15
+            has_moderate_warning = True
+
     # Adjust health score dynamically based on profile penalties (capped at min 10)
     orig_score = getattr(base_product, "base_health_score", None) or getattr(base_product, "health_score", 50)
     adjusted_score = max(10, orig_score - penalty_points) if penalty_points > 0 else orig_score
