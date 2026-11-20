@@ -475,17 +475,19 @@ class TinyFishService:
         )
         raw_score = math_result["final_health_score"]
 
-        # Commercial packaged products should have realistic, honest scores (max 92, never 100)
+        # Commercial packaged products should have realistic, honest scores (up to 96 for pristine whole foods, never 100)
         c_lower = candidate_name.lower()
-        if "coconut water" in c_lower or "rolled oats" in c_lower or "a2" in c_lower:
-            audited_score = min(92, max(85, raw_score - 8 if raw_score >= 98 else raw_score))
+        if "coconut water" in c_lower or "rolled oats" in c_lower or "almond" in c_lower or "ghee" in c_lower or "nut" in c_lower or "a2" in c_lower:
+            audited_score = min(96, max(88, raw_score - 4 if raw_score >= 98 else raw_score))
         elif "juice" in c_lower or "beverage" in c_lower or "kombucha" in c_lower:
-            audited_score = min(88, max(80, raw_score - 12 if raw_score >= 96 else raw_score))
-        elif "dark chocolate" in c_lower or "peanut butter" in c_lower or "mozzarella" in c_lower or "butter" in c_lower:
-            audited_score = min(88, max(80, raw_score - 10 if raw_score >= 95 else raw_score))
+            audited_score = min(91, max(82, raw_score - 8 if raw_score >= 96 else raw_score))
+        elif "dark chocolate" in c_lower or "peanut butter" in c_lower or "mozzarella" in c_lower or "paneer" in c_lower or "butter" in c_lower or "curd" in c_lower or "yogurt" in c_lower:
+            audited_score = min(93, max(84, raw_score - 6 if raw_score >= 96 else raw_score))
+        elif "biscuit" in c_lower or "cracker" in c_lower or "bread" in c_lower or "pasta" in c_lower:
+            audited_score = min(89, max(80, raw_score - 9 if raw_score >= 94 else raw_score))
         else:
             # Snacks, puffs, chips, crackers, cookies, noodles
-            audited_score = min(86, max(76, raw_score - 14 if raw_score >= 95 else raw_score))
+            audited_score = min(88, max(78, raw_score - 10 if raw_score >= 94 else raw_score))
 
         # Discard alternative if its audited score does not beat current product score
         if audited_score <= scanned_health_score:

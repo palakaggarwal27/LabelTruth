@@ -119,8 +119,23 @@ class LabelAnalysisResult(BaseModel):
     fssai_violations: List[str] = Field(default_factory=list, description='Violations or bypasses of FSSAI regulations e.g. descending weight rule, frozen dessert sold as ice cream, misleading Atta claims')
     ingredient_breakdown: List[IngredientItem] = Field(default_factory=list, description='Itemized breakdown of ingredients')
     nutrition_card: Optional[NutritionCardAnalysis] = Field(default=None, description='Detailed breakdown and clinical analysis of the nutritional table facts')
-    healthier_alternative: HealthierAlternative = Field(description='Clean swap recommendation')
+    healthier_alternative: Optional[HealthierAlternative] = Field(default=None, description='Clean swap recommendation')
     clean_alternatives: List[HealthierAlternative] = Field(default_factory=list, description='2-3 clean whole-food Indian alternative products available on quick-commerce')
-    nutrient_integrity: NutrientIntegrityMatrix = Field(default_factory=NutrientIntegrityMatrix, description='Protein bioavailability and full nutrient integrity matrix')
+    nutrient_integrity: Optional[NutrientIntegrityMatrix] = Field(default_factory=NutrientIntegrityMatrix, description='Protein bioavailability and full nutrient integrity matrix')
     is_food_label: bool = Field(default=True, description='False if image is not a food product or label')
     label_type: Literal['FRONT_OF_PACK', 'BACK_OF_PACK', 'FULL_PANEL', 'NOT_A_LABEL'] = Field(default='FULL_PANEL')
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_analysis(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            raw_v = str(data.get("personalized_verdict") or "").upper().strip()
+            if "AVOID" in raw_v:
+                data["personalized_verdict"] = "AVOID (VIOLATES PROFILE)"
+            elif "SAFE" in raw_v:
+                data["personalized_verdict"] = "SAFE FOR YOU"
+            elif "CAUTION" in raw_v or "WARN" in raw_v:
+                data["personalized_verdict"] = "CAUTION"
+            elif raw_v not in ['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)']:
+                data["personalized_verdict"] = "CAUTION"
+        return data

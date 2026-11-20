@@ -4,7 +4,7 @@ import { Sparkles, ExternalLink, MapPin, RefreshCw } from 'lucide-react';
 import { buildStoreOptions } from '@/utils/affiliate';
 
 interface AlternativeCardProps {
-  alternative: HealthierAlternative;
+  alternative?: HealthierAlternative;
   cleanAlternatives?: HealthierAlternative[];
   isLoadingAlternatives?: boolean;
 }

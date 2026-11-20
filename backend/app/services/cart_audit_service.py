@@ -11,9 +11,10 @@ import io
 import urllib.parse
 from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.cart_audit import CartAuditResponse, CartItemAudit
-from app.schemas.analysis import HealthierAlternative, LabelAnalysisResult, IngredientItem
+from app.schemas.analysis import HealthierAlternative, LabelAnalysisResult, IngredientItem, NutrientIntegrityMatrix
 from app.schemas.user_profile import UserProfile
 from app.services.tinyfish_service import tinyfish_service
+from app.services.delta_audit import get_realistic_homemade_recipe_score
 
 logger = logging.getLogger(__name__)
 
@@ -577,10 +578,11 @@ class CartAuditService:
             encoded_query = urllib.parse.quote_plus(f"how to make fresh {topic} at home healthy recipe")
             youtube_url = f"https://www.youtube.com/results?search_query={encoded_query}"
             recipe_name = f"Fresh Homemade {topic.title()} Recipe"
+            recipe_score = get_realistic_homemade_recipe_score(topic, item_score)
             clean_alt_candidate = HealthierAlternative(
                 name=recipe_name,
                 product_name=recipe_name,
-                health_score=92,
+                health_score=recipe_score,
                 key_benefit="100% whole unprocessed ingredients, zero industrial additives, zero palm oil.",
                 price_comparison="Inexpensive",
                 personalized_fit="Optimal natural nutrition without synthetic preservatives.",
@@ -604,7 +606,9 @@ class CartAuditService:
                 for c in concerns
             ] if concerns else [],
             nutrition_card=None,
-            nutrient_integrity=None
+            healthier_alternative=clean_alt_candidate,
+            clean_alternatives=[clean_alt_candidate] if clean_alt_candidate else [],
+            nutrient_integrity=NutrientIntegrityMatrix()
         )
 
         return CartItemAudit(

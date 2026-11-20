@@ -79,7 +79,7 @@ export interface LabelAnalysisResult {
   fssai_violations: string[];
   ingredient_breakdown: IngredientItem[];
   nutrition_card?: NutritionCardAnalysis;
-  healthier_alternative: HealthierAlternative;
+  healthier_alternative?: HealthierAlternative;
   clean_alternatives?: HealthierAlternative[];
   nutrient_integrity?: NutrientIntegrityMatrix;
   category?: string;

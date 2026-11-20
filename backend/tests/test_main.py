@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.analysis import LabelAnalysisResult
 
 client = TestClient(app)
 
@@ -394,8 +395,21 @@ def test_profile_evaluator_acidity_deduction():
     assert any("acid" in c.lower() for c in eval_res["contraindications"])
     assert eval_res["adjusted_health_score"] < mock_product.health_score
 
-def test_audit_cart_endpoint():
+@patch("app.services.gemini_vision.gemini_vision_service.analyze_text_query", new_callable=AsyncMock)
+@patch("app.services.cart_audit_service.cart_audit_service._call_gemini_text", return_value=None)
+@patch("app.services.cart_audit_service.tinyfish_service.search_and_fetch_bop", new_callable=AsyncMock)
+def test_audit_cart_endpoint(mock_bop, mock_gemini_text, mock_analyze_text):
     """Verify /api/audit-cart endpoint returns valid CartAuditResponse with distinct, non-identical swaps"""
+    mock_bop.return_value = "Ingredients: Tepary bean flour, gram flour, edible vegetable oil, iodized salt, chili, spices."
+    mock_analyze_text.return_value = LabelAnalysisResult(
+        product_name="Haldirams Bhujia Sev",
+        health_score=32,
+        personalized_verdict="AVOID (VIOLATES PROFILE)",
+        simple_summary="Deep fried in palm oil with excessive sodium.",
+        deceptive_claims_flagged=[],
+        fssai_violations=[],
+        ingredient_breakdown=[]
+    )
     response = client.post(
         "/api/audit-cart",
         data={
@@ -417,11 +431,22 @@ def test_audit_cart_endpoint():
     assert "haldiram" not in first_item["cleaner_alternative"]["name"].lower()
     assert first_item["cleaner_alternative"]["health_score"] > first_item["health_score"]
 
+@patch("app.services.gemini_vision.gemini_vision_service.analyze_text_query", new_callable=AsyncMock)
+@patch("app.services.cart_audit_service.cart_audit_service._call_gemini_text", return_value=None)
 @patch("app.services.cart_audit_service.tinyfish_service.search_and_fetch_bop", new_callable=AsyncMock)
 @patch("app.services.cart_audit_service.tinyfish_service.find_pincode_alternatives", new_callable=AsyncMock)
-def test_audit_cart_endpoint_with_item_names(mock_alts, mock_bop):
+def test_audit_cart_endpoint_with_item_names(mock_alts, mock_bop, mock_gemini_text, mock_analyze_text):
     mock_bop.return_value = "Ingredients: Refined wheat flour, palm oil, salt, flavor enhancer."
     mock_alts.return_value = []
+    mock_analyze_text.return_value = LabelAnalysisResult(
+        product_name="Audited Packaged Item",
+        health_score=34,
+        personalized_verdict="AVOID (VIOLATES PROFILE)",
+        simple_summary="Refined flour and palm oil formulation.",
+        deceptive_claims_flagged=[],
+        fssai_violations=[],
+        ingredient_breakdown=[]
+    )
     response = client.post(
         "/api/audit-cart",
         data={
@@ -532,7 +557,7 @@ def test_high_scoring_clean_product_can_be_top_tier():
 
 @pytest.mark.anyio
 async def test_audit_alternative_candidate_never_returns_100():
-    """Verify that commercial packaged alternatives receive calibrated realistic scores (<= 92, never 100)"""
+    """Verify that commercial packaged alternatives receive calibrated realistic scores (< 100)"""
     from app.services.tinyfish_service import tinyfish_service
     from app.schemas.user_profile import UserProfile
     from unittest.mock import patch
@@ -544,7 +569,7 @@ async def test_audit_alternative_candidate_never_returns_100():
             scanned_health_score=40
         )
         assert alt is not None
-        assert alt["health_score"] <= 92
+        assert alt["health_score"] < 100
         assert alt["health_score"] >= 78
         assert alt["health_score"] != 100
 
@@ -568,8 +593,30 @@ def test_discover_alternatives_juice_category_mapping():
         name_lower = alt["name"].lower()
         assert "bar" not in name_lower or "chocolate" not in name_lower
         assert "oats" not in name_lower
-        # Health score must beat 42 and never exceed realistic 92
+        # Health score must beat 42 and be realistic (< 100)
         assert alt["health_score"] > 42
-        assert alt["health_score"] <= 92
+        assert alt["health_score"] < 100
+
+def test_homemade_recipe_scores_vary_by_category_and_never_flat_92():
+    """Verify that YouTube recipes receive category-calibrated scores and are not all flat 92"""
+    from app.services.delta_audit import get_realistic_homemade_recipe_score
+
+    juice_score = get_realistic_homemade_recipe_score("fruit juice", 40)
+    sweet_score = get_realistic_homemade_recipe_score("chocolate cookies", 40)
+    snack_score = get_realistic_homemade_recipe_score("bhujia sev", 40)
+    oats_score = get_realistic_homemade_recipe_score("rolled oats", 40)
+    makhana_score = get_realistic_homemade_recipe_score("roasted makhana", 40)
+
+    # All should be realistic (between 85 and 96), never 100
+    assert 85 <= juice_score < 100
+    assert 85 <= sweet_score < 100
+    assert 85 <= snack_score < 100
+    assert 85 <= oats_score < 100
+    assert 85 <= makhana_score < 100
+
+    # Scores must reflect the food category rather than being static 92 across all foods
+    scores = {juice_score, sweet_score, snack_score, oats_score, makhana_score}
+    assert len(scores) >= 3, "Recipe scores should be distinct across food categories, not a single static number"
+
 
 
