@@ -395,26 +395,10 @@ async def smart_scan(
 
                 result = await analyze_label(image=image, user_profile=user_profile)
                 
-                # Enrich with TinyFish live web agent pincode alternatives
-                candidate_list = []
-                if result.health_score < 85:
-                    try:
-                        from app.services.tinyfish_service import tinyfish_service
-                        pincode_alts = await tinyfish_service.find_pincode_alternatives(result.product_name, delivery_pincode)
-                        if pincode_alts:
-                            candidate_list.extend(pincode_alts)
-                    except Exception as alt_err:
-                        logger.warning(f"Error enriching image pincode alternatives: {alt_err}")
-
-                if getattr(result, "clean_alternatives", None):
-                    for ca in result.clean_alternatives:
-                        candidate_list.append(ca.model_dump() if hasattr(ca, "model_dump") else ca)
-
-                # Apply delta audit hierarchy
-                hierarchical_alts = apply_delta_audit_hierarchy(result.product_name, result.health_score, candidate_list)
-                if hierarchical_alts:
-                    result.clean_alternatives = hierarchical_alts
-                    result.healthier_alternative = hierarchical_alts[0]
+                # Decoupled: Alternatives load asynchronously in the frontend via /api/discover-alternatives
+                # This guarantees sub-2s initial scan latency and prevents Gemini RPM quota exhaustion
+                result.clean_alternatives = []
+                result.healthier_alternative = None
 
                 store_product_in_cache(
                     base_product=result,
@@ -453,32 +437,10 @@ async def smart_scan(
             if isinstance(result, dict):
                 result = LabelAnalysisResult(**result)
 
-            # Module 2 & 1: Pin-Code Location Web Agent & Delta Audit Hierarchy
-            candidate_list = []
-            cleaner_hint = getattr(result, "cleaner_alternative_exists_in_market", False)
-            should_search = result.health_score < 85 or cleaner_hint
-            if should_search:
-                try:
-                    prod_name = getattr(result, "product_name", clean_query)
-                    pincode_alts = await tinyfish_service.find_pincode_alternatives(prod_name, delivery_pincode)
-                    if pincode_alts:
-                        candidate_list.extend(pincode_alts)
-                except Exception as alt_err:
-                    logger.warning(f"Error enriching pincode alternatives: {alt_err}")
-
-            if getattr(result, "clean_alternatives", None):
-                for ca in result.clean_alternatives:
-                    candidate_list.append(ca.model_dump() if hasattr(ca, "model_dump") else ca)
-
-            hierarchical_alts = apply_delta_audit_hierarchy(
-                result.product_name or clean_query,
-                result.health_score,
-                candidate_list,
-                cleaner_exists_hint=cleaner_hint
-            )
-            if hierarchical_alts:
-                result.clean_alternatives = hierarchical_alts
-                result.healthier_alternative = hierarchical_alts[0]
+            # Decoupled: Alternatives load asynchronously in the frontend via /api/discover-alternatives
+            # This guarantees sub-2s initial scan latency and prevents Gemini RPM quota exhaustion
+            result.clean_alternatives = []
+            result.healthier_alternative = None
 
             store_product_in_cache(
                 base_product=result,
@@ -702,21 +664,30 @@ async def discover_alternatives_endpoint(payload: DiscoverAlternativesRequest):
     pincode = payload.pincode or "110001"
 
     CATEGORY_CANDIDATES = {
+        "juice": ["Raw Pressery Cold Pressed Valencia Orange", "Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water"],
+        "fruit": ["Raw Pressery Cold Pressed Valencia Orange", "Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water"],
+        "beverage": ["Raw Pressery Tender Coconut Water", "Paper Boat Coconut Water", "Atmosphere Brew Sparkling Kombucha"],
+        "drink": ["Paper Boat Coconut Water", "Raw Pressery Cold Pressed Valencia Orange", "Epigamia Greek Yogurt Smoothie"],
+        "cola": ["Atmosphere Brew Sparkling Kombucha", "Wild Drum Craft Seltzer", "Raw Pressery Cold Pressed Juice"],
+        "soda": ["Wild Drum Craft Seltzer", "Atmosphere Brew Sparkling Kombucha"],
+        "health drink": ["Early Foods Sprouted Ragi & Almond Cocoa Mix", "Little Joys Nutrition Mix"],
+        "malt": ["Early Foods Sprouted Ragi Almond Cocoa", "Slurrp Farm Superfoods Chocolate Powder"],
         "namkeen": ["Slurrp Farm Ragi Puffs", "Open Secret Roasted Makhana", "Sattviko Makhana Pudina"],
         "snack": ["Slurrp Farm Ragi Puffs", "True Elements Multigrain Snacks", "Open Secret Makhana"],
         "chips": ["The Whole Truth Baked Potato Chips", "TagZ Popped Chips", "BRB Popped Chips"],
         "biscuit": ["The Whole Truth 100% Sourdough Crackers", "Early Foods Organic Ragi Cookies", "Slurrp Farm Millet Cookies"],
         "cookies": ["Early Foods Multi-Grain Jaggery Cookies", "Slurrp Farm Millet Choco Chip Cookies"],
-        "cola": ["Atmosphere Brew Sparkling Kombucha", "Wild Drum Craft Seltzer", "Raw Pressery Cold Pressed Juice"],
-        "drink": ["Paper Boat Coconut Water", "Raw Pressery Cold Pressed Valencia Orange", "Epigamia Greek Yogurt Smoothie"],
-        "health drink": ["Early Foods Sprouted Ragi & Almond Cocoa Mix", "Little Joys Nutrition Mix"],
-        "malt": ["Early Foods Sprouted Ragi Almond Cocoa", "Slurrp Farm Superfoods Chocolate Powder"],
         "noodles": ["Slurrp Farm Foxtail Millet Noodles", "Masterchow Hakka Whole Wheat Noodles", "WickedGud Multigrain Noodles"],
         "cereal": ["The Whole Truth 100% Rolled Oats", "True Elements Rolled Oats", "Slurrp Farm Millet Muesli"],
         "oats": ["The Whole Truth Rolled Oats", "True Elements Rolled Oats"],
+        "bread": ["The Whole Truth 100% Whole Wheat Bread", "Early Foods Organic Multi-Grain Bread", "Bakers Dozen Sourdough Bread"],
         "chocolate": ["The Whole Truth 71% Dark Chocolate", "Paul and Mike Dark Chocolate"],
         "cheese": ["Akshayakalpa Organic Artisan Mozzarella", "Country Delight Pure Cheese"],
         "butter": ["Country Delight Fresh Butter", "Akshayakalpa Organic Butter"],
+        "ghee": ["Two Brothers Organic A2 Cultured Ghee", "Country Delight Pure Desi Ghee", "Akshayakalpa Organic Ghee"],
+        "oil": ["Two Brothers Organic Cold-Pressed Mustard Oil", "Wood Pressed Coconut Oil", "Cold Pressed Groundnut Oil"],
+        "paneer": ["Akshayakalpa Organic Malai Paneer", "Country Delight Fresh Paneer"],
+        "milk": ["Country Delight Pure Cow Milk", "Akshayakalpa Organic A2 Cow Milk", "Amul Organic Cow Milk"],
         "yogurt": ["Epigamia Natural Greek Yogurt", "Milky Mist Greek Yogurt Plain"],
         "jam": ["The Whole Truth 100% Fruit Spread", "Bhuira Jam Homemade Apple & Cinnamon"],
         "ketchup": ["The Whole Truth No-Refined-Sugar Tomato Ketchup", "Naagin Original Hot Sauce"],
@@ -732,29 +703,28 @@ async def discover_alternatives_endpoint(payload: DiscoverAlternativesRequest):
             candidates_to_try.extend(cands)
             break
 
-    if not candidates_to_try:
-        candidates_to_try = ["The Whole Truth Snack", "Slurrp Farm Healthy Snack", "True Elements Rolled Oats"]
-
+    # Strictly avoid cross-category mismatches (never default juices or milk to protein bars/oats)
     unique_cands = list(dict.fromkeys(candidates_to_try))[:3]
 
-    audit_tasks = [
-        tinyfish_service.audit_alternative_candidate(cand, user_profile, current_score)
-        for cand in unique_cands
-    ]
-    audited_results = await asyncio.gather(*audit_tasks, return_exceptions=True)
-
     verified_alts = []
-    for res in audited_results:
-        if isinstance(res, HealthierAlternative):
-            verified_alts.append(res)
-        elif isinstance(res, dict):
-            try:
-                verified_alts.append(HealthierAlternative(**res))
-            except Exception:
-                pass
+    if unique_cands:
+        audit_tasks = [
+            tinyfish_service.audit_alternative_candidate(cand, user_profile, current_score)
+            for cand in unique_cands
+        ]
+        audited_results = await asyncio.gather(*audit_tasks, return_exceptions=True)
+
+        for res in audited_results:
+            if isinstance(res, HealthierAlternative):
+                verified_alts.append(res)
+            elif isinstance(res, dict):
+                try:
+                    verified_alts.append(HealthierAlternative(**res))
+                except Exception:
+                    pass
 
     candidate_dicts = [a.model_dump() for a in verified_alts]
-    hierarchical = apply_delta_audit_hierarchy(p_name, current_score, candidate_dicts)
+    hierarchical = apply_delta_audit_hierarchy(p_name, current_score, candidate_dicts, category_hint=category)
     return hierarchical or verified_alts
 
 @app.post('/api/chat', response_model=ChatResponse)

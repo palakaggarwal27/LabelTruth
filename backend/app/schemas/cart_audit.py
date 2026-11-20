@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
-from app.schemas.analysis import HealthierAlternative
+from app.schemas.analysis import HealthierAlternative, LabelAnalysisResult
 
 class CartItemAudit(BaseModel):
     product_name: str = Field(description="Name of item in cart")
@@ -9,6 +9,7 @@ class CartItemAudit(BaseModel):
     personalized_verdict: str = Field(description="SAFE FOR YOU, CAUTION, or AVOID (VIOLATES PROFILE)")
     key_concerns: List[str] = Field(default_factory=list, description="Primary clinical or additive concerns")
     cleaner_alternative: Optional[HealthierAlternative] = Field(default=None, description="Cleaner alternative available at same pincode on same app")
+    full_analysis: Optional[LabelAnalysisResult] = Field(default=None, description="Full nutritional and ingredient forensic breakdown for deep inspection")
 
 class CartAuditResponse(BaseModel):
     store_name: str = Field(default="Quick-Commerce", description="Detected quick-commerce platform e.g. Zepto, Blinkit")

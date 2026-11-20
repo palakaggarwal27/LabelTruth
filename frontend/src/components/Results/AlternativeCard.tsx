@@ -15,9 +15,9 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
   isLoadingAlternatives = false 
 }) => {
   const [userCity, setUserCity] = useState('');
-  const allAlternatives = cleanAlternatives && cleanAlternatives.length > 0 
+  const allAlternatives = (cleanAlternatives && cleanAlternatives.length > 0 
     ? cleanAlternatives 
-    : [alternative];
+    : (alternative ? [alternative] : [])).filter(Boolean);
 
   return (
     <div className="space-y-4">
@@ -46,14 +46,21 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
         </div>
       </div>
 
-      {isLoadingAlternatives && (!allAlternatives || allAlternatives.length === 0) && (
+      {isLoadingAlternatives && allAlternatives.length === 0 && (
         <div className="p-4 bg-emerald-50/60 border border-dashed border-emerald-200 rounded-md flex items-center gap-2.5 text-xs text-emerald-800 animate-pulse">
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
           <span>Searching verified cleaner Indian brand alternatives from authentic packaging via web...</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {allAlternatives.length === 0 && !isLoadingAlternatives && (
+        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-md text-xs text-zinc-500">
+          No cleaner packaged swaps required or found in local inventory. This product is either optimal or best substituted with fresh homemade whole foods.
+        </div>
+      )}
+
+      {allAlternatives.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {allAlternatives.map((alt, idx) => {
           const storeOptions = buildStoreOptions(alt.name, userCity);
 
@@ -165,6 +172,7 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
           );
         })}
       </div>
+      )}
     </div>
   );
 };

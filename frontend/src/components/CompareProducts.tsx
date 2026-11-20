@@ -7,8 +7,9 @@ import { useHealthProfile } from '@/context/HealthProfileContext';
 import { 
   Trophy, CheckCircle2, AlertTriangle, XCircle, ShieldCheck, 
   Flame, Candy, Droplet, RefreshCw, Sparkles, ExternalLink, 
-  Loader2, Search, Camera, UploadCloud, HeartPulse, ShieldAlert
+  Loader2, Search, Camera, UploadCloud, HeartPulse, ShieldAlert, Eye
 } from 'lucide-react';
+import { ProductInsightsModal } from '@/components/Results/ProductInsightsModal';
 
 interface ProductSlotInput {
   mode: 'text' | 'image';
@@ -54,6 +55,7 @@ export const CompareProducts: React.FC = () => {
   const [compareStep, setCompareStep] = useState<string>('');
   const [comparisonResult, setComparisonResult] = useState<ProductComparisonResult | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [inspectProduct, setInspectProduct] = useState<LabelAnalysisResult | null>(null);
 
   // Check if both products have inputs ready
   const hasInputA = slotA.result !== null || (slotA.mode === 'text' ? slotA.query.trim().length > 1 : slotA.file !== null);
@@ -489,6 +491,16 @@ export const CompareProducts: React.FC = () => {
                 </p>
               </div>
             )}
+
+            {/* View Full Insights Action */}
+            <button
+              type="button"
+              onClick={() => setInspectProduct(slot.result)}
+              className="w-full mt-2 py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View Full Insights</span>
+            </button>
           </div>
         )}
       </div>
@@ -854,6 +866,13 @@ export const CompareProducts: React.FC = () => {
           isNeither
         )}
       </div>
+
+      {/* Full Product Breakdown Modal */}
+      <ProductInsightsModal
+        isOpen={inspectProduct !== null}
+        onClose={() => setInspectProduct(null)}
+        product={inspectProduct}
+      />
     </div>
   );
 };

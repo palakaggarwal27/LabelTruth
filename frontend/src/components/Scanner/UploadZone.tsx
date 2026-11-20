@@ -3,7 +3,6 @@
 import React, { useRef, useState } from 'react';
 import { UploadCloud, Camera } from 'lucide-react';
 
-import { reverseGeocodePincode } from '@/lib/api';
 import { useHealthProfile } from '@/context/HealthProfileContext';
 import { UserProfile } from '@/types';
 
@@ -103,7 +102,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
   };
 
   const [pincode, setPincode] = useState('110001');
-  const [detectingLoc, setDetectingLoc] = useState(false);
 
   const savePincode = (pin: string) => {
     setPincode(pin);
@@ -115,123 +113,17 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
     }
   };
 
-  // Automatically detect user location and pincode on mount without requiring manual click
+  // Load saved delivery pincode on mount
   React.useEffect(() => {
     try {
       const cached = sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode');
       if (cached && /^\d{6}$/.test(cached)) {
         setPincode(cached);
-        return;
       }
     } catch {
       // ignore
     }
-    handleDetectLocation(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleDetectLocation = (forceFresh: boolean = false) => {
-    setDetectingLoc(true);
-
-    if (forceFresh) {
-      try {
-        sessionStorage.removeItem('labeltruth_user_pincode');
-        localStorage.removeItem('labeltruth_user_pincode');
-      } catch {
-        // ignore
-      }
-    }
-
-    const tryIpFallback = async () => {
-      try {
-        const ipRes = await fetch("https://ipapi.co/json/");
-        if (ipRes.ok) {
-          const ipData = await ipRes.json();
-          const match = String(ipData?.postal || '').match(/\b([1-9][0-9]{5})\b/);
-          if (match) {
-            savePincode(match[1]);
-            return true;
-          }
-        }
-      } catch (e) {
-        console.warn("IP location fallback notice:", e);
-      }
-      return false;
-    };
-
-    if (!navigator.geolocation) {
-      tryIpFallback().finally(() => setDetectingLoc(false));
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
-
-          // 1. High-precision server-side reverse geocoding via Nominatim with User-Agent
-          try {
-            const serverPin = await reverseGeocodePincode(lat, lon);
-            if (serverPin && /^[1-9][0-9]{5}$/.test(serverPin)) {
-              savePincode(serverPin);
-              return;
-            }
-          } catch (serverErr) {
-            console.warn("Server reverse geocode notice:", serverErr);
-          }
-
-          // 2. OpenStreetMap Nominatim client fallback
-          try {
-            const osmRes = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&format=json&addressdetails=1`,
-              { headers: { 'Accept': 'application/json' } }
-            );
-            if (osmRes.ok) {
-              const osmData = await osmRes.json();
-              const addr = osmData?.address || {};
-              const pinCandidate = addr.postcode || addr.postal_code || '';
-              const match = String(pinCandidate).match(/\b([1-9][0-9]{5})\b/);
-              if (match) {
-                savePincode(match[1]);
-                return;
-              }
-            }
-          } catch (osmErr) {
-            console.warn("Nominatim reverse geocode notice:", osmErr);
-          }
-
-          // 3. BigDataCloud reverse geocode client
-          try {
-            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-            if (res.ok) {
-              const data = await res.json();
-              const pin = data?.postcode || data?.postCode;
-              const match = String(pin || '').match(/\b([1-9][0-9]{5})\b/);
-              if (match) {
-                savePincode(match[1]);
-                return;
-              }
-            }
-          } catch (bdErr) {
-            console.warn("BigDataCloud geocode notice:", bdErr);
-          }
-
-          await tryIpFallback();
-        } catch {
-          await tryIpFallback();
-        } finally {
-          setDetectingLoc(false);
-        }
-      },
-      async (err) => {
-        console.warn("Browser GPS permission or timeout:", err);
-        await tryIpFallback();
-        setDetectingLoc(false);
-      },
-      { timeout: 15000, enableHighAccuracy: true, maximumAge: forceFresh ? 0 : 60000 }
-    );
-  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,15 +213,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
                 className="w-20 px-2 py-0.5 text-xs font-mono border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
                 title="Pincode for live Zepto/Blinkit availability check"
               />
-              <button
-                type="button"
-                onClick={() => handleDetectLocation(true)}
-                disabled={detectingLoc}
-                className="px-2 py-0.5 bg-zinc-200 hover:bg-zinc-300 rounded text-[11px] font-medium transition-colors"
-                title="Detect current location pincode"
-              >
-                {detectingLoc ? "Locating..." : "📍 GPS"}
-              </button>
             </div>
           </div>
           <p className="text-[11px] text-zinc-500 mb-2">

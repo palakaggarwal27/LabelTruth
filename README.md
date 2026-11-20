@@ -77,9 +77,9 @@ LabelTruth integrates **TinyFish AI** as an autonomous browser agent layer for r
 - **Add Family Members**: Easily create custom profiles (e.g. Mom, Toddler, Grandma) with dedicated dietary and clinical restrictions.
 - **Dynamic Profile Badges**: Real-time tags reflect actual conditions, allergies, and custom avoidances rather than static labels.
 
-### 8. 📍 Automatic GPS & Pincode Localization
-- Automatically detects user delivery pincode on mount via HTML5 Geolocation and OpenStreetMap reverse-geocoding.
-- Seamlessly falls back to IP geolocation and caches the verified 6-digit postal code in `sessionStorage` to eliminate repetitive manual prompts.
+### 8. 📍 Localized Pincode Delivery & Dark-Store Auditing
+- Validates clean commercial alternative availability for quick-commerce dark stores (Zepto, Blinkit) by delivery postal code (default `110001` or user-configured).
+- Caches the verified 6-digit delivery pincode in `sessionStorage` and `localStorage` to eliminate repetitive manual re-entry.
 
 ### 9. 💬 Context-Aware Clinical AI Chatbot
 - Sticky floating clinical assistant powered by `gemini-flash-lite-latest` with multi-key failover rotation.
@@ -97,7 +97,7 @@ flowchart LR
     B -->|"Prompt + Image + BOP Data"| C["Google Gemini Vision API<br/>(gemini-flash-lite-latest)"]
     C -->|"Structured Clinical Audit JSON"| B
     B -->|"LabelAnalysisResult / CartAuditResponse"| A
-    A -->|"LocalStorage & SessionStorage"| D["Household Profiles, Auto-GPS<br/>& Scan History Cache"]
+    A -->|"LocalStorage & SessionStorage"| D["Household Profiles, Pincode<br/>& Scan History Cache"]
 ```
 
 - **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS ("Editorial Minimalist / Modern Clinical" theme), Lucide Icons, Axios.

@@ -158,6 +158,7 @@ export interface CartItemAudit {
   personalized_verdict: string;
   key_concerns: string[];
   cleaner_alternative?: HealthierAlternative;
+  full_analysis?: LabelAnalysisResult;
 }
 
 export interface CartAuditResponse {

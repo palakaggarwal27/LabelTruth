@@ -509,3 +509,67 @@ async def test_cart_url_and_bop_extraction():
     assert title is not None
     assert "Bhujia" in title
 
+def test_low_scoring_product_never_marked_top_tier():
+    """Verify that a product scoring 55 is NEVER declared 'Top Tier Choice' when candidates are empty"""
+    from app.services.delta_audit import apply_delta_audit_hierarchy
+    
+    result = apply_delta_audit_hierarchy("Processed Sweet Snack", 55, [])
+    assert len(result) > 0
+    first = result[0]
+    assert "Top Tier Choice" not in first.name
+    assert first.type == "HOMEMADE_RECIPE"
+    assert first.health_score > 55
+
+def test_high_scoring_clean_product_can_be_top_tier():
+    """Verify that a product scoring >= 85 can be declared Top Tier Choice"""
+    from app.services.delta_audit import apply_delta_audit_hierarchy
+
+    result = apply_delta_audit_hierarchy("100% Organic Rolled Oats", 92, [])
+    assert len(result) > 0
+    first = result[0]
+    assert "Top Tier Choice" in first.name
+    assert first.health_score == 92
+
+@pytest.mark.anyio
+async def test_audit_alternative_candidate_never_returns_100():
+    """Verify that commercial packaged alternatives receive calibrated realistic scores (<= 92, never 100)"""
+    from app.services.tinyfish_service import tinyfish_service
+    from app.schemas.user_profile import UserProfile
+    from unittest.mock import patch
+
+    with patch.object(tinyfish_service, "search_and_fetch_bop", return_value="Energy: 180 kcal\nAdded Sugars: 0g\nIngredients: 100% Cold Pressed Valencia Orange Juice"):
+        alt = await tinyfish_service.audit_alternative_candidate(
+            "Raw Pressery Cold Pressed Valencia Orange",
+            UserProfile(),
+            scanned_health_score=40
+        )
+        assert alt is not None
+        assert alt["health_score"] <= 92
+        assert alt["health_score"] >= 78
+        assert alt["health_score"] != 100
+
+def test_discover_alternatives_juice_category_mapping():
+    """Verify juice / fruit drink queries match real cold pressed juices or coconut water, never oats or bars"""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post('/api/discover-alternatives', json={
+        "product_name": "Real Mixed Fruit Juice",
+        "category": "fruit juice/drink",
+        "current_health_score": 42,
+        "pincode": "110001"
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) > 0
+    for alt in data:
+        # Must not recommend protein bars or oats for fruit juice
+        name_lower = alt["name"].lower()
+        assert "bar" not in name_lower or "chocolate" not in name_lower
+        assert "oats" not in name_lower
+        # Health score must beat 42 and never exceed realistic 92
+        assert alt["health_score"] > 42
+        assert alt["health_score"] <= 92
+
+

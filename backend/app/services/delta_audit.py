@@ -139,7 +139,7 @@ def apply_delta_audit_hierarchy(
             personalized_fit="Eliminates all industrial seed oils and synthetic additives."
         )
 
-    final_list = clean_tier1 if clean_tier1 else tier2_alts
+    final_list = list(clean_tier1) if clean_tier1 else list(tier2_alts)
     if tier3_recipe:
         final_list.append(tier3_recipe)
 
@@ -147,22 +147,43 @@ def apply_delta_audit_hierarchy(
     filtered_list = [alt for alt in final_list if alt.health_score > scanned_health_score]
 
     if not filtered_list:
-        return [
-            HealthierAlternative(
-                name=f"{scanned_product_name} (Top Tier Choice)",
-                product_name=scanned_product_name,
-                health_score=scanned_health_score,
-                type="CLEAN_COMMERCIAL",
-                delta_vs_scanned="Current Product",
-                warning_tag="",
-                is_direct_pdp=False,
-                pincode_available=True,
-                reason="🏆 Cleanest available choice in this category. No higher-scoring alternatives exist in dark-store inventory.",
-                key_benefit="Top nutritional integrity in this category.",
-                price_comparison="Current Product",
-                personalized_fit="Optimal formulation alignment."
-            )
-        ]
+        if scanned_health_score >= 85:
+            return [
+                HealthierAlternative(
+                    name=f"{scanned_product_name} (Top Tier Choice)",
+                    product_name=scanned_product_name,
+                    health_score=scanned_health_score,
+                    type="CLEAN_COMMERCIAL",
+                    delta_vs_scanned="Current Product",
+                    warning_tag="",
+                    is_direct_pdp=False,
+                    pincode_available=True,
+                    reason="🏆 Cleanest available choice in this category. No higher-scoring alternatives exist in dark-store inventory.",
+                    key_benefit="Top nutritional integrity in this category.",
+                    price_comparison="Current Product",
+                    personalized_fit="Optimal formulation alignment."
+                )
+            ]
+        else:
+            fresh_title = f"Fresh Homemade {query_topic.title()} Alternative"
+            encoded_query = urllib.parse.quote_plus(f"healthy fresh homemade {query_topic} recipe")
+            alt_score = min(92, max(85, scanned_health_score + 15))
+            return [
+                HealthierAlternative(
+                    name=fresh_title,
+                    product_name=fresh_title,
+                    health_score=alt_score,
+                    type="HOMEMADE_RECIPE",
+                    delta_vs_scanned=f"+{alt_score - scanned_health_score} pts",
+                    recipe_url=f"https://www.youtube.com/results?search_query={encoded_query}",
+                    is_direct_pdp=False,
+                    pincode_available=True,
+                    reason="No cleaner packaged swap exists in local store inventory. Opt for fresh whole-food preparation.",
+                    key_benefit="100% natural, free from industrial additives, preservatives, and excess sugars.",
+                    price_comparison="Inexpensive",
+                    personalized_fit="Eliminates industrial processing, seed oils, and additives."
+                )
+            ]
 
     return filtered_list
 

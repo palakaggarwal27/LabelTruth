@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import { auditCart, reverseGeocodePincode } from '@/lib/api';
-import { CartAuditResponse } from '@/types';
+import { auditCart } from '@/lib/api';
+import { CartAuditResponse, CartItemAudit, LabelAnalysisResult, PersonalizedVerdict, ConcernLevel } from '@/types';
 import { useHealthProfile } from '@/context/HealthProfileContext';
+import { ProductInsightsModal } from '@/components/Results/ProductInsightsModal';
 import { 
   ShoppingCart, 
   UploadCloud, 
@@ -16,10 +17,12 @@ import {
   Trophy, 
   CheckCircle2, 
   AlertCircle,
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Eye
 } from 'lucide-react';
 
 export const CartAuditView: React.FC = () => {
@@ -33,7 +36,7 @@ export const CartAuditView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CartAuditResponse | null>(null);
-  const [detectingLoc, setDetectingLoc] = useState(false);
+  const [inspectItem, setInspectItem] = useState<CartItemAudit | null>(null);
   const [auditStep, setAuditStep] = useState<string>("Extracting items from cart screenshots / store receipts...");
 
   const savePincode = (pin: string) => {
@@ -46,19 +49,16 @@ export const CartAuditView: React.FC = () => {
     }
   };
 
-  // Automatically detect user location and pincode on mount without requiring manual click
+  // Load saved delivery pincode on mount
   React.useEffect(() => {
     try {
       const cached = sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode');
       if (cached && /^\d{6}$/.test(cached)) {
         setPincode(cached);
-        return;
       }
     } catch {
       // ignore
     }
-    handleDetectLocation(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Progressive audit stage timer for cart inspection
@@ -83,105 +83,6 @@ export const CartAuditView: React.FC = () => {
       clearTimeout(timer3);
     };
   }, [loading]);
-
-  const handleDetectLocation = (forceFresh: boolean = false) => {
-    setDetectingLoc(true);
-
-    if (forceFresh) {
-      try {
-        sessionStorage.removeItem('labeltruth_user_pincode');
-        localStorage.removeItem('labeltruth_user_pincode');
-      } catch {
-        // ignore
-      }
-    }
-
-    const tryIpFallback = async () => {
-      try {
-        const ipRes = await fetch("https://ipapi.co/json/");
-        if (ipRes.ok) {
-          const ipData = await ipRes.json();
-          const match = String(ipData?.postal || '').match(/\b([1-9][0-9]{5})\b/);
-          if (match) {
-            savePincode(match[1]);
-            return true;
-          }
-        }
-      } catch (e) {
-        console.warn("IP location notice:", e);
-      }
-      return false;
-    };
-
-    if (!navigator.geolocation) {
-      tryIpFallback().finally(() => setDetectingLoc(false));
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
-
-          // 1. High precision server-side reverse geocoding via Nominatim with User-Agent
-          try {
-            const serverPin = await reverseGeocodePincode(lat, lon);
-            if (serverPin && /^[1-9][0-9]{5}$/.test(serverPin)) {
-              savePincode(serverPin);
-              return;
-            }
-          } catch (serverErr) {
-            console.warn("Server reverse geocode notice:", serverErr);
-          }
-
-          // 2. High precision Nominatim with street level zoom 18
-          try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&zoom=18&format=json&addressdetails=1`);
-            if (res.ok) {
-              const data = await res.json();
-              const pinCandidate = data?.address?.postcode || data?.address?.postal_code || '';
-              const match = String(pinCandidate).match(/\b([1-9][0-9]{5})\b/);
-              if (match) {
-                savePincode(match[1]);
-                return;
-              }
-            }
-          } catch (osmErr) {
-            console.warn("Nominatim reverse geocode notice:", osmErr);
-          }
-
-          // 3. BigDataCloud reverse geocode client
-          try {
-            const bdcRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
-            if (bdcRes.ok) {
-              const data = await bdcRes.json();
-              const pin = data?.postcode || data?.postCode;
-              const match = String(pin || '').match(/\b([1-9][0-9]{5})\b/);
-              if (match) {
-                savePincode(match[1]);
-                return;
-              }
-            }
-          } catch (bdErr) {
-            console.warn("BigDataCloud notice:", bdErr);
-          }
-
-          await tryIpFallback();
-        } catch {
-          await tryIpFallback();
-        } finally {
-          setDetectingLoc(false);
-        }
-      },
-      async (err) => {
-        console.warn("Browser GPS permission or timeout:", err);
-        await tryIpFallback();
-        setDetectingLoc(false);
-      },
-      { timeout: 15000, enableHighAccuracy: true, maximumAge: forceFresh ? 0 : 60000 }
-    );
-  };
 
   const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -321,14 +222,6 @@ export const CartAuditView: React.FC = () => {
                   placeholder="110001"
                   className="w-24 px-2.5 py-1 text-xs font-mono border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
                 />
-                <button
-                  type="button"
-                  onClick={() => handleDetectLocation(true)}
-                  disabled={detectingLoc}
-                  className="px-2.5 py-1 bg-zinc-200 hover:bg-zinc-300 rounded text-xs font-medium transition-colors"
-                >
-                  {detectingLoc ? 'Locating...' : '📍 GPS'}
-                </button>
               </div>
             </div>
 
@@ -620,6 +513,16 @@ export const CartAuditView: React.FC = () => {
                             ))}
                           </div>
                         )}
+
+                        {/* View Full Insights Action */}
+                        <button
+                          type="button"
+                          onClick={() => setInspectItem(item)}
+                          className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-medium transition-colors cursor-pointer shadow-sm w-fit"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Full Insights</span>
+                        </button>
                       </div>
 
                       {/* Cleaner Swap Recommendation */}
@@ -629,7 +532,7 @@ export const CartAuditView: React.FC = () => {
                             <div className="flex items-center justify-between gap-2 mb-1.5">
                               <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-800 font-bold flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                                Recommended Clean Swap
+                                {item.cleaner_alternative.type === 'HOMEMADE_RECIPE' ? 'Homemade Fresh Swap' : 'Recommended Clean Swap'}
                               </span>
                               <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300 shrink-0">
                                 {item.cleaner_alternative.health_score}/100
@@ -639,11 +542,21 @@ export const CartAuditView: React.FC = () => {
                               {item.cleaner_alternative.name}
                             </h5>
                             <p className="text-[11px] text-zinc-600 font-light mt-1 leading-relaxed">
-                              {item.cleaner_alternative.key_benefit}
+                              {item.cleaner_alternative.key_benefit || item.cleaner_alternative.reason}
                             </p>
                           </div>
 
-                          {item.cleaner_alternative.direct_pdp_url && (
+                          {item.cleaner_alternative.recipe_url ? (
+                            <a
+                              href={item.cleaner_alternative.recipe_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="self-start mt-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                            >
+                              <span>View Recipe on YouTube</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : item.cleaner_alternative.direct_pdp_url ? (
                             <a
                               href={item.cleaner_alternative.direct_pdp_url}
                               target="_blank"
@@ -653,12 +566,17 @@ export const CartAuditView: React.FC = () => {
                               <span>Find on {result.store_name}</span>
                               <ExternalLink className="w-3 h-3" />
                             </a>
-                          )}
+                          ) : null}
+                        </div>
+                      ) : item.health_score >= 75 ? (
+                        <div className="p-3.5 rounded-lg border border-zinc-200 bg-zinc-50 text-xs text-zinc-600 flex items-center gap-2 h-full">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Already optimal: Verified clean profile with no harmful additives.</span>
                         </div>
                       ) : (
-                        <div className="p-3.5 rounded-lg border border-zinc-200 bg-zinc-50 text-xs text-zinc-500 flex items-center gap-2 h-full">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>Already optimal: This product is verified clean on the shelf.</span>
+                        <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50/70 text-xs text-amber-800 flex items-center gap-2 h-full">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>No cleaner packaged swap in local store inventory; consider fresh whole foods or moderation.</span>
                         </div>
                       )}
                     </div>
@@ -668,6 +586,41 @@ export const CartAuditView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Full Product Breakdown Modal */}
+      {inspectItem && (
+        <ProductInsightsModal
+          isOpen={inspectItem !== null}
+          onClose={() => setInspectItem(null)}
+          product={
+            inspectItem.full_analysis || ({
+              is_food_label: true,
+              label_type: 'FULL_PANEL',
+              cleaner_alternative_exists_in_market: Boolean(inspectItem.cleaner_alternative),
+              product_name: inspectItem.product_name,
+              health_score: inspectItem.health_score,
+              personalized_verdict: (['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)'].includes(inspectItem.personalized_verdict)
+                ? inspectItem.personalized_verdict
+                : 'CAUTION') as PersonalizedVerdict,
+              simple_summary: inspectItem.key_concerns[0] || `Forensic audit of ${inspectItem.product_name}`,
+              deceptive_claims_flagged: [],
+              fssai_violations: [],
+              ingredient_breakdown: inspectItem.key_concerns.map((c) => ({
+                ingredient: c.split(':')[0],
+                purpose: 'Identified Factor',
+                concern_level: (inspectItem.health_score < 45 ? 'HIGH' : 'MEDIUM') as ConcernLevel,
+                personalized_warning: c
+              })),
+              healthier_alternative: inspectItem.cleaner_alternative || {
+                name: 'Fresh Whole Food',
+                reason: 'Unprocessed natural choice'
+              },
+              clean_alternatives: inspectItem.cleaner_alternative ? [inspectItem.cleaner_alternative] : []
+            } as LabelAnalysisResult)
+          }
+          productTitle={inspectItem.product_name}
+        />
       )}
     </div>
   );
