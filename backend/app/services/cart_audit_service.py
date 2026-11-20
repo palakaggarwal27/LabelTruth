@@ -8,7 +8,7 @@ from google.genai import types
 from PIL import Image
 import io
 
-from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.cart_audit import CartAuditResponse, CartItemAudit
 from app.schemas.analysis import HealthierAlternative
 from app.schemas.user_profile import UserProfile
@@ -70,16 +70,15 @@ Examine this image, which is either:
 2. A photo of a printed supermarket / shopping mall store receipt or bill (e.g. DMart, Reliance Smart / Fresh, Nature's Basket, More, Spencer's, or local supermarket).
 
 YOUR FORENSIC TASK:
-1. Detect "store_name": The quick-commerce app or supermarket name (e.g. Zepto, Blinkit, DMart, Reliance Smart).
-2. Extract ONLY PACKAGED FOOD, BEVERAGE, OR GROCERY PRODUCTS in "items":
-   - STRICTLY EXCLUDE non-food items: detergents, soaps, shampoos, toothbrushes, floor cleaners, kitchenware, toilet paper, batteries, carry bags.
-   - STRICTLY EXCLUDE unbranded loose produce if not packaged: e.g. loose onions/potatoes. (Packaged pulses, packaged millets, breads, snacks, sauces, dairy, cereals, beverages MUST be included).
-   - Normalize product name: Include brand name, product title, and flavor/variant if visible (e.g. "Maggi 2-Minute Masala Noodles", "Amul Pasteurized Butter 500g", "Britannia Brown Bread").
+1. Detect "store_name": The quick-commerce app or supermarket name (e.g. Zepto, Blinkit, DMart, Reliance Smart, Swiggy Instamart, BigBasket, Amazon Fresh, or "Store").
+2. Extract ALL packaged foods, beverages, grocery items, dairy, snacks, cooking essentials, breads, and produce in "items":
+   - Include brand name and product title as displayed (e.g. "Maggi 2-Minute Masala Noodles", "Amul Pasteurized Butter 500g", "Britannia 100% Whole Wheat Bread", "Fortune Sunflower Oil 1L", "Aashirvaad Shudh Chakki Atta 5kg", "Lay's Classic Salted", "Coca-Cola 750ml").
    - Extract "quantity": integer count (default 1).
+   - Only exclude non-food household cleaning chemicals or bags: detergents, dishwash bars, floor cleaners, soaps, shampoos, garbage bags, toilet paper, batteries. All edible foods, drinks, and grocery staples MUST be included.
 
 Return ONLY valid JSON:
 {
-  "store_name": "DMart",
+  "store_name": "Zepto",
   "items": [
     {
       "product_name": "Full Brand Product Name",
@@ -87,7 +86,7 @@ Return ONLY valid JSON:
     }
   ]
 }
-If no packaged food items are found or legible, return {"store_name": "Store", "items": []}
+If no food or grocery items are visible, return {"store_name": "Store", "items": []}
 """
 
 class CartAuditService:
@@ -111,24 +110,20 @@ class CartAuditService:
             pil_img = Image.open(io.BytesIO(image_bytes))
             if pil_img.mode in ("RGBA", "P"):
                 pil_img = pil_img.convert("RGB")
-            pil_img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+            # Preserve high resolution for tall phone screenshots (do not crush width to 540px)
+            w, h = pil_img.size
+            if max(w, h) > 2048:
+                pil_img.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
             buf = io.BytesIO()
-            pil_img.save(buf, format="JPEG", quality=85, optimize=True)
+            pil_img.save(buf, format="JPEG", quality=90, optimize=True)
             image_bytes = buf.getvalue()
         except Exception:
             pass
 
-        ACTIVE_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
-
         for cl in self._get_active_clients():
             if not cl:
                 continue
-            for model_name in ACTIVE_MODELS:
+            for model_name in GEMINI_ACTIVE_MODELS:
                 try:
                     response = cl.models.generate_content(
                         model=model_name,
@@ -136,7 +131,10 @@ class CartAuditService:
                             types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
                             CART_OR_BILL_OCR_PROMPT
                         ],
-                        config=types.GenerateContentConfig(response_mime_type="application/json")
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0.0
+                        )
                     )
                     txt = response.text.strip()
                     if txt.startswith("```json"):
@@ -145,7 +143,11 @@ class CartAuditService:
                         txt = txt[3:]
                     if txt.endswith("```"):
                         txt = txt[:-3]
-                    return json.loads(txt.strip())
+                    parsed = json.loads(txt.strip())
+                    if parsed and isinstance(parsed, dict) and parsed.get("items"):
+                        return parsed
+                    elif parsed and isinstance(parsed, dict):
+                        return parsed
                 except Exception as e:
                     logger.warning(f"Cart/bill OCR with {model_name} failed: {e}")
                     continue
@@ -205,23 +207,18 @@ class CartAuditService:
 
     def _call_gemini_text(self, prompt: str, max_output: int = 512) -> Optional[str]:
         """Synchronous Gemini text call for JSON extraction"""
-        ACTIVE_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
         for cl in self._get_active_clients():
             if not cl:
                 continue
-            for model_name in ACTIVE_MODELS:
+            for model_name in GEMINI_ACTIVE_MODELS:
                 try:
                     response = cl.models.generate_content(
                         model=model_name,
                         contents=[prompt],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
-                            max_output_tokens=max_output
+                            max_output_tokens=max_output,
+                            temperature=0.0
                         )
                     )
                     txt = response.text.strip()

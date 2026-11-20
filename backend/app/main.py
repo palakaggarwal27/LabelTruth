@@ -399,7 +399,12 @@ async def smart_scan(
 
             if clean_query.startswith("http://") or clean_query.startswith("https://"):
                 url_title, bop_content = await tinyfish_service.search_and_fetch_bop_by_url(clean_query)
-                effective_product_name = url_title or clean_query
+                if not url_title or any(inv in url_title.lower() for inv in ["not found", "404", "error", "item unavailable"]):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Could not detect a food product from this link. The link may have expired or requires login. Please enter the brand and product name directly."
+                    )
+                effective_product_name = url_title
                 online_content = bop_content or ""
             else:
                 online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
@@ -560,7 +565,12 @@ async def smart_scan_multi_profile(
             online_content = f"Product: {cached_base.product_name}\nIngredients: {', '.join([i.ingredient for i in cached_base.ingredient_breakdown or []])}\nNutrition: {cached_base.nutrition_card.model_dump_json() if cached_base.nutrition_card else ''}"
         elif clean_query.startswith("http://") or clean_query.startswith("https://"):
             url_title, bop_content = await tinyfish_service.search_and_fetch_bop_by_url(clean_query)
-            effective_product_name = url_title or clean_query
+            if not url_title or any(inv in url_title.lower() for inv in ["not found", "404", "error", "item unavailable"]):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Could not detect a food product from this link. The link may have expired or requires login. Please enter the brand and product name directly."
+                )
+            effective_product_name = url_title
             online_content = bop_content or ""
         else:
             online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""

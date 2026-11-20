@@ -1,11 +1,30 @@
-from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from typing import List, Literal, Optional, Any
+from pydantic import BaseModel, Field, model_validator
 
 class IngredientItem(BaseModel):
-    ingredient: str = Field(description='Identified ingredient or additive name')
-    purpose: str = Field(description='Functional purpose e.g., Colorant, Preservative, Bulking agent, Flour')
-    concern_level: Literal['LOW', 'MEDIUM', 'HIGH'] = Field(description='Health risk or processing concern level')
+    ingredient: str = Field(default='', description='Identified ingredient or additive name')
+    purpose: str = Field(default='General Ingredient', description='Functional purpose e.g., Colorant, Preservative, Bulking agent, Flour')
+    concern_level: Literal['LOW', 'MEDIUM', 'HIGH'] = Field(default='LOW', description='Health risk or processing concern level')
     personalized_warning: str = Field(default='', description='Direct warning if this conflicts with user profile or medical condition')
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_ingredient(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"ingredient": data, "purpose": "General Ingredient", "concern_level": "LOW", "personalized_warning": ""}
+        if isinstance(data, dict):
+            ing = data.get("ingredient") or data.get("name") or data.get("item") or "Ingredient"
+            purp = data.get("purpose") or data.get("function") or "General Ingredient"
+            lvl = str(data.get("concern_level", "LOW")).upper().strip()
+            if lvl not in ["LOW", "MEDIUM", "HIGH"]:
+                lvl = "HIGH" if "HIGH" in lvl or "WARN" in lvl else ("MEDIUM" if "MED" in lvl else "LOW")
+            return {
+                "ingredient": str(ing),
+                "purpose": str(purp),
+                "concern_level": lvl,
+                "personalized_warning": str(data.get("personalized_warning") or "")
+            }
+        return data
 
 class HealthierAlternative(BaseModel):
     name: str = Field(description='Recommended healthier brand or clean food alternative in India')
@@ -33,9 +52,37 @@ class ProteinAudit(BaseModel):
     amino_spiking_risk: bool = Field(default=False, description='True if non-protein nitrogen (free Glycine, Taurine) suspected')
 
 class ClaimVerification(BaseModel):
-    claim: str = Field(description='Front-of-pack claim made by brand')
-    status: Literal['VERIFIED', 'MISLEADING', 'DECEPTIVE'] = Field(description='Regulatory verification status')
-    explanation: str = Field(description='Clinical or regulatory explanation exposing the reality')
+    claim: str = Field(default='', description='Front-of-pack claim made by brand')
+    status: Literal['VERIFIED', 'MISLEADING', 'DECEPTIVE'] = Field(default='VERIFIED', description='Regulatory verification status')
+    explanation: str = Field(default='', description='Clinical or regulatory explanation exposing the reality')
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_claim(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"claim": data, "status": "VERIFIED", "explanation": "Claim as stated"}
+        if isinstance(data, dict):
+            claim = str(data.get("claim") or data.get("text") or data.get("title") or "")
+            raw_status = str(data.get("status") or "").upper().strip()
+            if raw_status not in ["VERIFIED", "MISLEADING", "DECEPTIVE"]:
+                if "DECEPT" in raw_status or "FALSE" in raw_status or data.get("fssai_compliant") is False:
+                    raw_status = "DECEPTIVE"
+                elif "MISLEAD" in raw_status or "WARN" in raw_status or "PARTIAL" in raw_status:
+                    raw_status = "MISLEADING"
+                else:
+                    raw_status = "VERIFIED"
+            explanation = str(
+                data.get("explanation")
+                or data.get("reason")
+                or data.get("details")
+                or ("Verified compliant with regulatory standards" if raw_status == "VERIFIED" else "Potential misleading claim")
+            )
+            return {
+                "claim": claim,
+                "status": raw_status,
+                "explanation": explanation
+            }
+        return data
 
 class NutrientIntegrityMatrix(BaseModel):
     protein: ProteinAudit = Field(default_factory=ProteinAudit)
@@ -66,8 +113,8 @@ class LabelAnalysisResult(BaseModel):
     product_name: str = Field(description='Identified brand and product title')
     health_score: int = Field(ge=0, le=100, description='Overall health score from 0 (ultra-processed/toxic) to 100 (wholesome/clean)')
     base_health_score: Optional[int] = Field(default=None, description='Objective baseline food score')
-    personalized_verdict: Literal['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)'] = Field(description='Personalized safety verdict')
-    simple_summary: str = Field(description='Clear 2-3 sentence layperson summary of the reality of this food')
+    personalized_verdict: Literal['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)'] = Field(default='CAUTION', description='Personalized safety verdict')
+    simple_summary: str = Field(default='', description='Clear 2-3 sentence layperson summary of the reality of this food')
     deceptive_claims_flagged: List[str] = Field(default_factory=list, description='Front-of-pack claims that deceive or contradict back-of-pack realities')
     fssai_violations: List[str] = Field(default_factory=list, description='Violations or bypasses of FSSAI regulations e.g. descending weight rule, frozen dessert sold as ice cream, misleading Atta claims')
     ingredient_breakdown: List[IngredientItem] = Field(default_factory=list, description='Itemized breakdown of ingredients')

@@ -4,7 +4,7 @@ from typing import Optional, List
 from google import genai
 from google.genai import types
 
-from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.chat import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -127,12 +127,7 @@ class ChatService:
             full_prompt += f"{str(role).upper()}: {content}\n"
         full_prompt += f"USER: {message}\nASSISTANT:"
 
-        ACTIVE_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
+        ACTIVE_MODELS = GEMINI_ACTIVE_MODELS
 
         clients_to_try = [self.client] if self.client else []
         for extra_key in GEMINI_API_KEYS:

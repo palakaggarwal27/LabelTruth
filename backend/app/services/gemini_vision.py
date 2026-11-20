@@ -7,12 +7,14 @@ from google import genai
 from google.genai import types
 
 from typing import List, Dict, Any, Optional
-from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.analysis import LabelAnalysisResult, NutrientIntegrityMatrix, ProteinAudit, IngredientItem
 from app.schemas.multi_profile import MultiProfileScanResult, ProfileAuditInsight
 from app.schemas.user_profile import UserProfile
 
 logger = logging.getLogger(__name__)
+
+FALLBACK_MODELS = GEMINI_ACTIVE_MODELS
 
 SYSTEM_PROMPT = """You are LabelTruth - an elite Indian food regulatory compliance auditor, forensic label expert, and clinical dietary physician powered by FSSAI regulations (2020 & 2023 Labelling & Display, 2018 Advertising & Claims) and ICMR-NIN 2024 Dietary Guidelines.
 
@@ -314,12 +316,6 @@ class GeminiVisionService:
             mime_type="image/jpeg",
         )
 
-        FALLBACK_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
         last_error = None
         parsed = None
 
@@ -346,7 +342,8 @@ class GeminiVisionService:
                         model=model_name,
                         contents=[prompt, image_part],
                         config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
+                            response_mime_type="application/json",
+                            temperature=0.0
                         )
                     )
                     clean_text = response.text.strip()
@@ -439,12 +436,6 @@ class GeminiVisionService:
         prompt = SYSTEM_PROMPT.replace("{user_profile_json}", profile_json)
         prompt += f"\n\nUSER INPUT QUERY: {query}\n\nRETRIEVED PRODUCT DATA:\n{online_content}\nPerform the forensic FSSAI and nutritional audit on this product based on this data."
 
-        FALLBACK_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
         last_error = None
         parsed = None
 
@@ -471,7 +462,8 @@ class GeminiVisionService:
                         model=model_name,
                         contents=[prompt],
                         config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
+                            response_mime_type="application/json",
+                            temperature=0.0
                         )
                     )
                     clean_text = response.text.strip()
@@ -622,6 +614,13 @@ class GeminiVisionService:
                 lvl = "HIGH" if "HIGH" in lvl or "WARN" in lvl else ("MEDIUM" if "MED" in lvl else "LOW")
             ing["concern_level"] = lvl
 
+        if not base_dict.get("personalized_verdict"):
+            base_dict["personalized_verdict"] = "SAFE FOR YOU" if "SAFE" in parsed.get("household_verdict", "") else "CAUTION"
+        elif base_dict["personalized_verdict"] not in ['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)']:
+            base_dict["personalized_verdict"] = "CAUTION"
+        if not base_dict.get("simple_summary"):
+            base_dict["simple_summary"] = parsed.get("household_summary") or "Food evaluation complete."
+
         base_product = LabelAnalysisResult(**base_dict)
 
         audited_insights = []
@@ -763,12 +762,6 @@ class GeminiVisionService:
             mime_type="image/jpeg",
         )
 
-        FALLBACK_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
         last_error = None
         parsed = None
 
@@ -779,7 +772,8 @@ class GeminiVisionService:
                         model=model_name,
                         contents=[prompt, image_part],
                         config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
+                            response_mime_type="application/json",
+                            temperature=0.0
                         )
                     )
                     clean_text = response.text.strip()
@@ -820,12 +814,6 @@ class GeminiVisionService:
         prompt = self._build_multi_profile_prompt(profiles)
         prompt += f"\n\nUSER INPUT QUERY: {query}\n\nRETRIEVED PRODUCT PACKAGING DATA:\n{online_content}\nPerform the simultaneous multi-profile household audit based on this packaging data."
 
-        FALLBACK_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
-        ]
         last_error = None
         parsed = None
 
@@ -836,7 +824,8 @@ class GeminiVisionService:
                         model=model_name,
                         contents=[prompt],
                         config=types.GenerateContentConfig(
-                            response_mime_type="application/json"
+                            response_mime_type="application/json",
+                            temperature=0.0
                         )
                     )
                     clean_text = response.text.strip()

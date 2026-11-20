@@ -7,19 +7,14 @@ from fastapi import HTTPException
 from google import genai
 from google.genai import types
 
-from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.analysis import LabelAnalysisResult, HealthierAlternative
 from app.schemas.user_profile import UserProfile
 from app.schemas.compare import ProductComparisonResult, DimensionComparison
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
-]
+FALLBACK_MODELS = GEMINI_ACTIVE_MODELS
 
 # Fast in-memory cache for repeat comparisons (zero credit cost)
 COMPARE_CACHE: Dict[str, ProductComparisonResult] = {}
@@ -181,7 +176,7 @@ Return ONLY valid JSON matching this schema:
                         contents=[prompt],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
-                            temperature=0.2,
+                            temperature=0.0,
                             max_output_tokens=900
                         )
                     )

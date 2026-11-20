@@ -100,11 +100,20 @@ class TinyFishService:
                                 if og_match:
                                     raw_title = og_match.group(1).strip()
 
+                        INVALID_TITLES = [
+                            "not found", "404", "page not found", "product not found", "item not found",
+                            "access denied", "attention required", "just a moment", "cloudflare", "403 forbidden",
+                            "bad request", "server error", "500 internal", "item unavailable", "out of stock",
+                            "temporarily unavailable", "page moved", "error"
+                        ]
+
                         if raw_title and not is_waf_block_content(raw_title):
                             # Clean out store suffixes (e.g. - Buy Online | Zepto / Blinkit)
                             clean = re.sub(r'(?i)\s*[-|:]\s*(buy online|zepto|blinkit|bigbasket|amazon|best price|at best price|fresh|grocery|instant delivery).*', '', raw_title)
                             clean = re.sub(r'(?i)^(buy\s+|online\s+|order\s+)', '', clean).strip()
-                            if len(clean) > 3 and not any(w in clean.lower() for w in ["access denied", "attention required", "just a moment", "cloudflare", "403 forbidden"]):
+                            clean_lower = clean.lower()
+                            is_invalid = any(inv in clean_lower for inv in INVALID_TITLES)
+                            if len(clean) > 3 and not is_invalid:
                                 # If we have a specific slug hint, verify that the fetched title is relevant and not a homepage/redirect artifact
                                 if slug_hint:
                                     slug_words = [w.lower() for w in slug_hint.split() if len(w) > 2]
@@ -112,11 +121,15 @@ class TinyFishService:
                                         logger.info(f"Fetched title '{clean}' does not match slug '{slug_hint}', using slug hint")
                                         return slug_hint
                                 return clean
+                            elif slug_hint and not any(inv in slug_hint.lower() for inv in INVALID_TITLES):
+                                return slug_hint
 
         except Exception as e:
             logger.warning(f"TinyFetch title extraction error for '{url}': {e}")
 
-        return slug_hint if slug_hint else None
+        if slug_hint and not any(inv in slug_hint.lower() for inv in ["not found", "404", "error"]):
+            return slug_hint
+        return None
 
     async def search_and_fetch_bop_by_url(self, url: str) -> Tuple[str, str]:
         """
@@ -127,9 +140,13 @@ class TinyFishService:
         """
         title = await self.fetch_product_title_from_url(url)
         if not title:
-            title = extract_product_name_from_url(url) or "Packaged Product"
+            extracted = extract_product_name_from_url(url)
+            if extracted and not any(inv in extracted.lower() for inv in ["not found", "404", "error"]):
+                title = extracted
+            else:
+                title = ""
 
-        packaging_text = await self.search_and_fetch_bop(title) or ""
+        packaging_text = (await self.search_and_fetch_bop(title) or "") if title else ""
         return title, packaging_text
 
     async def search_product(self, query: str) -> Optional[str]:

@@ -4,7 +4,7 @@ from typing import Optional
 from google import genai
 from google.genai import types
 
-from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
+from app.config import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_ACTIVE_MODELS
 from app.schemas.condition import ValidateConditionResponse
 
 logger = logging.getLogger(__name__)
@@ -93,14 +93,7 @@ class ConditionValidationService:
             if key in cleaned or cleaned in key:
                 return ValidateConditionResponse(is_valid=valid, standardized_name=std_name, reason=reason)
 
-        # If client is active, query active Gemini models with strict JSON schema
-        ACTIVE_MODELS = [
-            "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-3.8-flash",
-            "gemini-flash-latest"
-        ]
+        ACTIVE_MODELS = GEMINI_ACTIVE_MODELS
 
         clients_to_try = [self.client] if self.client else []
         for extra_key in GEMINI_API_KEYS:

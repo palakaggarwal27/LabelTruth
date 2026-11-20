@@ -117,6 +117,8 @@ export const CompareProducts: React.FC = () => {
     setIsComparing(true);
     setGlobalError(null);
     setComparisonResult(null);
+    setSlotA(prev => ({ ...prev, error: null }));
+    setSlotB(prev => ({ ...prev, error: null }));
 
     let auditedA = slotA.result;
     let auditedB = slotB.result;
@@ -127,8 +129,15 @@ export const CompareProducts: React.FC = () => {
         setCompareStep(`Auditing Product 1: ${slotA.mode === 'text' ? slotA.query : slotA.file?.name}...`);
         setSlotA(prev => ({ ...prev, loading: true, error: null }));
         const inputA = slotA.mode === 'text' ? { query: slotA.query } : { imageFile: slotA.file! };
-        auditedA = await smartScan(inputA, currentProfile);
-        setSlotA(prev => ({ ...prev, result: auditedA, loading: false }));
+        try {
+          auditedA = await smartScan(inputA, currentProfile);
+          setSlotA(prev => ({ ...prev, result: auditedA, loading: false, error: null }));
+        } catch (errA: unknown) {
+          const errObj = errA as { response?: { data?: { detail?: string } }; message?: string };
+          const errMsg = errObj.response?.data?.detail || errObj.message || 'Product 1 audit failed.';
+          setSlotA(prev => ({ ...prev, error: errMsg, loading: false }));
+          throw new Error(`Product 1: ${errMsg}`);
+        }
       }
 
       // Step 2: Audit Product B if not yet audited
@@ -136,8 +145,15 @@ export const CompareProducts: React.FC = () => {
         setCompareStep(`Auditing Product 2: ${slotB.mode === 'text' ? slotB.query : slotB.file?.name}...`);
         setSlotB(prev => ({ ...prev, loading: true, error: null }));
         const inputB = slotB.mode === 'text' ? { query: slotB.query } : { imageFile: slotB.file! };
-        auditedB = await smartScan(inputB, currentProfile);
-        setSlotB(prev => ({ ...prev, result: auditedB, loading: false }));
+        try {
+          auditedB = await smartScan(inputB, currentProfile);
+          setSlotB(prev => ({ ...prev, result: auditedB, loading: false, error: null }));
+        } catch (errB: unknown) {
+          const errObj = errB as { response?: { data?: { detail?: string } }; message?: string };
+          const errMsg = errObj.response?.data?.detail || errObj.message || 'Product 2 audit failed.';
+          setSlotB(prev => ({ ...prev, error: errMsg, loading: false }));
+          throw new Error(`Product 2: ${errMsg}`);
+        }
       }
 
       // Step 3: Run Joint Gemini Head-to-Head Comparison
@@ -145,6 +161,7 @@ export const CompareProducts: React.FC = () => {
       const pincode = typeof window !== 'undefined' ? (sessionStorage.getItem('labeltruth_user_pincode') || '110001') : '110001';
       const compRes = await compareProducts(auditedA, auditedB, currentProfile, pincode);
       setComparisonResult(compRes);
+      setGlobalError(null);
     } catch (err: unknown) {
       const errorObj = err as { response?: { data?: { detail?: string } }; message?: string };
       const msg = errorObj.response?.data?.detail || errorObj.message || 'Comparison failed. Please verify product inputs.';

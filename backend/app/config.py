@@ -13,3 +13,11 @@ if GEMINI_API_KEY and GEMINI_API_KEY not in GEMINI_API_KEYS:
 TINYFISH_API_KEY = os.getenv('TINYFISH_API_KEY', 'sk-tinyfish-izjo87yS42UZbOzdqMc4IHjievGNTGwG')
 PORT = int(os.getenv('PORT', 8000))
 HOST = os.getenv('HOST', '0.0.0.0')
+
+# Centralized active Gemini models supporting multimodal vision and structured JSON
+GEMINI_ACTIVE_MODELS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+]
