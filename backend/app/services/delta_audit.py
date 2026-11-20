@@ -58,24 +58,30 @@ def apply_delta_audit_hierarchy(
     - Tier 2: Best Commercial Option with nutrition warning tag if no commercial hits 70
     - Tier 3: Whole-Food Recipe Swap with YouTube search link
     """
-    # If product is clean (>=85) and AI confirmed no cleaner alternative exists in market, declare top tier
-    if scanned_health_score >= 85 and not cleaner_exists_hint and not candidate_alternatives:
-        return [
-            HealthierAlternative(
-                name=f"{scanned_product_name} (Top Tier Choice)",
-                product_name=scanned_product_name,
-                health_score=scanned_health_score,
-                type="CLEAN_COMMERCIAL",
-                delta_vs_scanned="Current Product",
-                warning_tag="",
-                is_direct_pdp=False,
-                pincode_available=True,
-                reason="🏆 Peak nutritional integrity verified. Zero harmful additives, pure whole-food formulation.",
-                key_benefit="Among the cleanest commercial options in this category.",
-                price_comparison="Current Product",
-                personalized_fit="Optimal clinical and whole-food alignment."
-            )
+    # If product is already high integrity (>= 85) and no commercial candidate beats it, declare already optimal
+    if scanned_health_score >= 85:
+        strictly_better = [
+            c for c in candidate_alternatives
+            if int(c.get("health_score", 0)) > scanned_health_score
+            and c.get("type") != "HOMEMADE_RECIPE"
         ]
+        if not strictly_better:
+            return [
+                HealthierAlternative(
+                    name=f"{scanned_product_name} (Top Tier Choice)",
+                    product_name=scanned_product_name,
+                    health_score=scanned_health_score,
+                    type="CLEAN_COMMERCIAL",
+                    delta_vs_scanned="Current Product",
+                    warning_tag="",
+                    is_direct_pdp=False,
+                    pincode_available=True,
+                    reason="🏆 Already optimal: Verified clean profile with peak ingredient integrity. No cleaner packaged upgrade required.",
+                    key_benefit="Among the cleanest commercial options in this category.",
+                    price_comparison="Current Product",
+                    personalized_fit="Optimal clinical and whole-food alignment."
+                )
+            ]
 
     scanned_lower = scanned_product_name.lower()
     clean_tier1 = []
@@ -84,8 +90,12 @@ def apply_delta_audit_hierarchy(
 
     for cand in candidate_alternatives:
         name = cand.get("name") or cand.get("product_name") or "Alternative"
-        c_score = int(cand.get("health_score", 80))
+        c_score = int(cand.get("health_score", 0))
         cand_lower = name.lower()
+
+        # STRICT RULE: Alternatives must have a strictly higher score than the scanned product
+        if c_score <= scanned_health_score:
+            continue
 
         # BRAND-SWAP BAN: Check if this is just another similar processed brand
         is_same_brand_processed = False
@@ -174,7 +184,7 @@ def apply_delta_audit_hierarchy(
         )
 
     final_list = list(clean_tier1) if clean_tier1 else list(tier2_alts)
-    if tier3_recipe:
+    if tier3_recipe and scanned_health_score < 85:
         final_list.append(tier3_recipe)
 
     # Strictly filter out ANY alternative whose health_score is <= scanned_health_score

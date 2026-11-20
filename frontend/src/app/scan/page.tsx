@@ -39,6 +39,26 @@ export default function ScanPage() {
   const [history, setHistory] = useState<ScannedHistoryItem[]>([]);
   const [demoMode, setDemoMode] = useState(false);
 
+  const SCAN_STEPS = [
+    "Reading label ingredients & back-of-pack nutritional facts...",
+    "Auditing additives against FSSAI 2020 standards & ICMR-NIN limits...",
+    "Screening clinical contraindications against household profiles...",
+    "Researching verified cleaner brand swaps in local dark stores...",
+    "Finalizing mathematical health score & integrity report..."
+  ];
+  const [scanStepIndex, setScanStepIndex] = useState(0);
+
+  React.useEffect(() => {
+    if (!loading) {
+      setScanStepIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setScanStepIndex((prev) => (prev + 1) % SCAN_STEPS.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [loading]);
+
   // Instant Profile Re-evaluation when family profile is switched
   React.useEffect(() => {
     if (result && currentProfile && !multiProfileResult) {
@@ -138,11 +158,16 @@ export default function ScanPage() {
   const triggerAlternativeDiscovery = (productData: LabelAnalysisResult, pin?: string) => {
     if (productData.health_score < 90) {
       setIsLoadingAlternatives(true);
+      const savedPin = typeof window !== 'undefined'
+        ? (sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode') || '110001')
+        : '110001';
+      const effectivePin = pin || savedPin;
+
       discoverAlternatives(
         productData.product_name,
         productData.health_score,
         productData.category || '',
-        pin || '110001',
+        effectivePin,
         currentProfile
       )
         .then((alts) => {
@@ -167,20 +192,23 @@ export default function ScanPage() {
   const handleProcessImage = async (fileOrBlob: File | Blob, selectedProfiles?: UserProfile[]) => {
     setLoading(true);
     setError(null);
+    const savedPin = typeof window !== 'undefined'
+      ? (sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode') || '110001')
+      : '110001';
     try {
       if (selectedProfiles && selectedProfiles.length > 1) {
-        const data = await smartScanMultiProfile({ imageFile: fileOrBlob }, selectedProfiles);
+        const data = await smartScanMultiProfile({ imageFile: fileOrBlob, pincode: savedPin }, selectedProfiles, savedPin);
         setMultiProfileResult(data);
         setResult(data.base_product);
         setActiveProfileTab('household');
         saveToHistory(data.base_product, fileOrBlob);
-        triggerAlternativeDiscovery(data.base_product);
+        triggerAlternativeDiscovery(data.base_product, savedPin);
       } else {
         setMultiProfileResult(null);
-        const data = await smartScan({ imageFile: fileOrBlob }, currentProfile);
+        const data = await smartScan({ imageFile: fileOrBlob, pincode: savedPin }, currentProfile);
         setResult(data);
         saveToHistory(data, fileOrBlob);
-        triggerAlternativeDiscovery(data);
+        triggerAlternativeDiscovery(data, savedPin);
       }
     } catch (err: unknown) {
       const errorObj = err as { response?: { data?: { detail?: string } } };
@@ -200,16 +228,19 @@ export default function ScanPage() {
     setError(null);
     const normalized = queryText.trim().toLowerCase();
     const isUrl = normalized.startsWith('http://') || normalized.startsWith('https://');
+    const savedPin = typeof window !== 'undefined'
+      ? (pincode || sessionStorage.getItem('labeltruth_user_pincode') || localStorage.getItem('labeltruth_user_pincode') || '110001')
+      : (pincode || '110001');
 
     // 1. Multi-profile simultaneous scan if >1 profile selected
     if (selectedProfiles && selectedProfiles.length > 1) {
       try {
-        const data = await smartScanMultiProfile({ query: queryText }, selectedProfiles, pincode);
+        const data = await smartScanMultiProfile({ query: queryText, pincode: savedPin }, selectedProfiles, savedPin);
         setMultiProfileResult(data);
         setResult(data.base_product);
         setActiveProfileTab('household');
         saveToHistory(data.base_product);
-        triggerAlternativeDiscovery(data.base_product, pincode);
+        triggerAlternativeDiscovery(data.base_product, savedPin);
       } catch (err: unknown) {
         const errorObj = err as { response?: { data?: { detail?: string } } };
         setError(
@@ -268,10 +299,10 @@ export default function ScanPage() {
     }
 
     try {
-      const data = await smartScan({ query: queryText, pincode: pincode || '110001', demoMode: isUrl ? false : demoMode }, currentProfile);
+      const data = await smartScan({ query: queryText, pincode: savedPin, demoMode: isUrl ? false : demoMode }, currentProfile);
       setResult(data);
       saveToHistory(data);
-      triggerAlternativeDiscovery(data, pincode);
+      triggerAlternativeDiscovery(data, savedPin);
     } catch (err: unknown) {
       console.warn('Backend query error, checking local preset catalog:', err);
       // Check if user queried one of our exact demo products by exact name (never for URLs)
@@ -451,11 +482,11 @@ export default function ScanPage() {
                 <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
                 <span>Forensic Nutritional Audit in Progress</span>
               </div>
-              <p className="text-[11px] font-mono text-zinc-600">
-                Auditing label ingredients against FSSAI 2020 standards &amp; ICMR-NIN thresholds...
+              <p className="text-[11px] font-mono text-zinc-600 transition-all duration-300">
+                {SCAN_STEPS[scanStepIndex]}
               </p>
-              <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1">
-                <div className="w-full h-full animate-shimmer-bar rounded-full" />
+              <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1 relative">
+                <div className="animate-progress-stream rounded-full" />
               </div>
             </div>
           )}
@@ -716,6 +747,13 @@ export default function ScanPage() {
               alternative={result.healthier_alternative} 
               cleanAlternatives={result.clean_alternatives}
               isLoadingAlternatives={isLoadingAlternatives}
+              scannedScore={
+                activeInsight
+                  ? activeInsight.health_score
+                  : multiProfileResult
+                  ? (result.base_health_score ?? result.health_score)
+                  : result.health_score
+              }
             />
           </div>
         );

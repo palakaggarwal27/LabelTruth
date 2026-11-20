@@ -104,7 +104,7 @@ export const smartScan = async (
 };
 
 export const smartScanMultiProfile = async (
-  input: { query?: string; imageFile?: Blob | File },
+  input: { query?: string; imageFile?: Blob | File; pincode?: string },
   profiles: UserProfile[],
   pincode?: string
 ): Promise<MultiProfileScanResult> => {
@@ -115,7 +115,8 @@ export const smartScanMultiProfile = async (
   if (input.query) {
     formData.append('query', input.query);
   }
-  formData.append('pincode', pincode || '110001');
+  const effectivePincode = pincode || input.pincode || '110001';
+  formData.append('pincode', effectivePincode);
   formData.append('profiles', JSON.stringify(profiles.slice(0, 3)));
 
   const res = await apiClient.post<MultiProfileScanResult>('/api/smart-scan-multi-profile', formData, {

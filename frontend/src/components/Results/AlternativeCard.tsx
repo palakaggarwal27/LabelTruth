@@ -7,17 +7,33 @@ interface AlternativeCardProps {
   alternative?: HealthierAlternative;
   cleanAlternatives?: HealthierAlternative[];
   isLoadingAlternatives?: boolean;
+  scannedScore?: number;
 }
 
 export const AlternativeCard: React.FC<AlternativeCardProps> = ({ 
   alternative, 
   cleanAlternatives, 
-  isLoadingAlternatives = false 
+  isLoadingAlternatives = false,
+  scannedScore
 }) => {
   const [userCity, setUserCity] = useState('');
-  const allAlternatives = (cleanAlternatives && cleanAlternatives.length > 0 
+  const rawAlternatives = (cleanAlternatives && cleanAlternatives.length > 0 
     ? cleanAlternatives 
     : (alternative ? [alternative] : [])).filter(Boolean);
+
+  // Filter out any alternative whose score is <= the current product's score,
+  // UNLESS it's the "Top Tier Choice" / "Current Product" optimal badge.
+  const allAlternatives = rawAlternatives.filter((alt) => {
+    if (alt.delta_vs_scanned === 'Top Tier Choice' || alt.delta_vs_scanned === 'Current Product') {
+      return true;
+    }
+    if (typeof scannedScore === 'number' && typeof alt.health_score === 'number') {
+      return alt.health_score > scannedScore;
+    }
+    return true;
+  });
+
+  const isOptimalProduct = typeof scannedScore === 'number' && scannedScore >= 85;
 
   return (
     <div className="space-y-4">
@@ -54,9 +70,21 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
       )}
 
       {allAlternatives.length === 0 && !isLoadingAlternatives && (
-        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-md text-xs text-zinc-500">
-          No cleaner packaged swaps required or found in local inventory. This product is either optimal or best substituted with fresh homemade whole foods.
-        </div>
+        isOptimalProduct ? (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-900 flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold text-emerald-950">Already Optimal: Verified Top Tier Choice ({scannedScore}/100)</div>
+              <div className="text-[11px] text-emerald-800 mt-0.5">
+                This packaged product already scores {scannedScore}/100 with verified clean ingredients, no harmful additives, and balanced nutrition. No cleaner packaged upgrade is required.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-md text-xs text-zinc-500">
+            No cleaner packaged swaps required or found in local inventory. This product is either optimal or best substituted with fresh homemade whole foods.
+          </div>
+        )
       )}
 
       {allAlternatives.length > 0 && (
@@ -142,8 +170,8 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
                 </div>
               </div>
 
-              {/* Multi-Store Buttons: Render only for commercial packaged alternatives, NOT for homemade recipes */}
-              {alt.type !== 'HOMEMADE_RECIPE' && (
+              {/* Multi-Store Buttons: Render only for commercial packaged alternatives, NOT for homemade recipes or Top Tier Choice */}
+              {alt.type !== 'HOMEMADE_RECIPE' && alt.delta_vs_scanned !== 'Top Tier Choice' && alt.delta_vs_scanned !== 'Current Product' && (
                 <div className="mt-4 pt-3 border-t border-zinc-100">
                   <span className="text-[10px] uppercase font-mono text-zinc-500 block mb-1.5">
                     Check Quick-Commerce Availability:

@@ -276,6 +276,27 @@ Return ONLY valid JSON matching this schema:
 }
 """
 
+def _enforce_delta_audit_on_dict(target_dict: dict):
+    """Enforce strict delta audit on alternatives so they never score <= current product"""
+    try:
+        from app.services.delta_audit import apply_delta_audit_hierarchy
+        scanned_score = int(target_dict.get("health_score", 50))
+        p_name = str(target_dict.get("product_name") or "Food Product")
+        cands = target_dict.get("clean_alternatives", []) or []
+        if not cands and target_dict.get("healthier_alternative"):
+            cands = [target_dict["healthier_alternative"]]
+        cand_dicts = [c if isinstance(c, dict) else (c.model_dump() if hasattr(c, "model_dump") else dict(c)) for c in cands if c]
+        hierarchical_alts = apply_delta_audit_hierarchy(
+            scanned_product_name=p_name,
+            scanned_health_score=scanned_score,
+            candidate_alternatives=cand_dicts,
+            category_hint=target_dict.get("category", "")
+        )
+        target_dict["clean_alternatives"] = [a.model_dump() for a in hierarchical_alts]
+        target_dict["healthier_alternative"] = hierarchical_alts[0].model_dump() if hierarchical_alts else None
+    except Exception as e:
+        logger.warning(f"Notice applying delta audit hierarchy: {e}")
+
 class GeminiVisionService:
     def __init__(self):
         if GEMINI_API_KEY:
@@ -484,10 +505,10 @@ class GeminiVisionService:
                     else:
                         parsed["health_score"] = math_ref_score
                     parsed["base_health_score"] = math_ref_score
-                parsed["base_health_score"] = math_ref_score
         except Exception as score_err:
             logger.warning(f"Error computing piecewise health score: {score_err}")
 
+        _enforce_delta_audit_on_dict(parsed)
         return LabelAnalysisResult(**parsed)
 
     async def analyze_text_query(self, query: str, user_profile: UserProfile, online_content: str = "") -> LabelAnalysisResult:
@@ -600,10 +621,10 @@ class GeminiVisionService:
                         parsed["health_score"] = max(5, min(100, blended_score))
                     else:
                         parsed["health_score"] = math_ref_score
-                    parsed["base_health_score"] = math_ref_score
             except Exception as score_err:
                 logger.warning(f"Error computing piecewise health score for text query: {score_err}")
 
+            _enforce_delta_audit_on_dict(parsed)
             return LabelAnalysisResult(**parsed)
 
         # If all Gemini models fail, return honest error (never hardcoded cheese preset)
@@ -716,11 +737,9 @@ class GeminiVisionService:
 
         if not base_dict.get("personalized_verdict"):
             base_dict["personalized_verdict"] = "SAFE FOR YOU" if "SAFE" in parsed.get("household_verdict", "") else "CAUTION"
-        elif base_dict["personalized_verdict"] not in ['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)']:
-            base_dict["personalized_verdict"] = "CAUTION"
         if not base_dict.get("simple_summary"):
             base_dict["simple_summary"] = parsed.get("household_summary") or "Food evaluation complete."
-
+        _enforce_delta_audit_on_dict(base_dict)
         base_product = LabelAnalysisResult(**base_dict)
 
         audited_insights = []

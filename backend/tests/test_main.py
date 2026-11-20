@@ -618,5 +618,54 @@ def test_homemade_recipe_scores_vary_by_category_and_never_flat_92():
     scores = {juice_score, sweet_score, snack_score, oats_score, makhana_score}
     assert len(scores) >= 3, "Recipe scores should be distinct across food categories, not a single static number"
 
+def test_delta_audit_strictly_rejects_lower_or_equal_scores():
+    """Verify delta audit never accepts candidates with score <= scanned product score"""
+    from app.services.delta_audit import apply_delta_audit_hierarchy
+
+    candidates = [
+        {"name": "Inferior Brand A", "health_score": 60, "type": "CLEAN_COMMERCIAL"},
+        {"name": "Equal Brand B", "health_score": 75, "type": "CLEAN_COMMERCIAL"},
+        {"name": "Clean Upgrade C", "health_score": 92, "type": "CLEAN_COMMERCIAL"},
+    ]
+    # Scanned product is 75
+    alts = apply_delta_audit_hierarchy("Processed Snack", 75, candidates, category_hint="snack")
+    scores = [a.health_score for a in alts if a.type == "CLEAN_COMMERCIAL"]
+    for s in scores:
+        assert s > 75, f"Alternative score {s} must be strictly greater than scanned score 75"
+
+def test_delta_audit_optimal_product_returns_top_tier_choice():
+    """Verify that products scoring >= 85 with no better commercial alternative return Top Tier Choice"""
+    from app.services.delta_audit import apply_delta_audit_hierarchy
+
+    # Scanned product is 88 (clean) and candidates are all lower
+    candidates = [
+        {"name": "Good Alternative", "health_score": 80, "type": "CLEAN_COMMERCIAL"},
+        {"name": "Decent Alternative", "health_score": 70, "type": "CLEAN_COMMERCIAL"}
+    ]
+    alts = apply_delta_audit_hierarchy("Organic Rolled Oats", 88, candidates, category_hint="cereal")
+    assert len(alts) == 1
+    assert alts[0].health_score == 88
+    assert alts[0].delta_vs_scanned == "Current Product"
+    assert "Already optimal" in alts[0].reason
+
+def test_enforce_delta_audit_on_dict_filters_multi_profile():
+    """Verify _enforce_delta_audit_on_dict in gemini_vision correctly prunes lower scoring alts"""
+    from app.services.gemini_vision import _enforce_delta_audit_on_dict
+
+    base_dict = {
+        "product_name": "Nutty Granola",
+        "health_score": 82,
+        "clean_alternatives": [
+            {"name": "Low Cookie", "health_score": 50, "type": "CLEAN_COMMERCIAL"},
+            {"name": "Slightly Better Granola", "health_score": 98, "type": "CLEAN_COMMERCIAL"}
+        ],
+        "category": "breakfast"
+    }
+    _enforce_delta_audit_on_dict(base_dict)
+    alts = base_dict["clean_alternatives"]
+    for a in alts:
+        if a.get("type") == "CLEAN_COMMERCIAL":
+            assert a["health_score"] > 82
+
 
 

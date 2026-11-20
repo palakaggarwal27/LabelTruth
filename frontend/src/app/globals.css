@@ -55,10 +55,27 @@ body {
   animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.animate-shimmer-bar {
-  background: linear-gradient(90deg, #10b981 0%, #3b82f6 50%, #10b981 100%);
-  background-size: 200% 100%;
-  animation: shimmerBar 2.2s infinite linear;
+@keyframes progressStream {
+  0% {
+    transform: translateX(-100%);
+    width: 25%;
+  }
+  50% {
+    width: 55%;
+  }
+  100% {
+    transform: translateX(350%);
+    width: 25%;
+  }
+}
+
+.animate-progress-stream {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #10b981, #06b6d4, #3b82f6);
+  animation: progressStream 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .animate-pulse-glow {

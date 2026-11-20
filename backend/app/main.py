@@ -708,19 +708,24 @@ async def discover_alternatives_endpoint(payload: DiscoverAlternativesRequest):
 Target Product: "{p_name}"
 Category: "{category}"
 Current Health Score: {current_score}/100
+User Delivery PINCODE: "{pincode}" (India)
 
-Identify 2 to 3 real, commercially available clean-label packaged food or beverage products currently sold in India on platforms like Blinkit, Zepto, Swiggy Instamart, or Amazon India.
+Identify 2 to 3 real, commercially available clean-label packaged food or beverage products currently in stock and delivered in PINCODE {pincode} via quick-commerce dark stores (Blinkit, Zepto, Swiggy Instamart) or Amazon Fresh.
 
 CRITICAL RULES:
-1. CATEGORY CONSISTENCY: The alternatives MUST be in the EXACT SAME product category as "{p_name}".
+1. AREA AVAILABILITY & POPULAR CLEAN BRANDS:
+   - Only suggest mainstream, readily accessible clean Indian brands (e.g. The Whole Truth, Slurrp Farm, Two Brothers Organic Farms, Akshayakalpa, Epigamia, Paper Boat, Raw Pressery, Yoga Bar, True Elements, Open Secret).
+   - STRICTLY AVOID obscure, hard-to-find artisanal brands or niche baby-food brands (such as Early Foods) that are rarely stocked on quick-commerce in {pincode}.
+   - The product must be readily deliverable to {pincode}.
+2. CATEGORY CONSISTENCY: The alternatives MUST be in the EXACT SAME product category as "{p_name}".
    - If fruit juice -> cold-pressed pure juices or pure tender coconut water (STRICTLY NO protein bars, oats, or savory snacks).
-   - If biscuits/cookies -> ragi/millet cookies with zero palm oil and zero refined sugar.
-   - If chips/namkeen -> roasted makhana, popped potato chips, or baked millet snacks.
-   - If dairy/milk -> certified organic A2 cow milk.
-   - If bread -> 100% whole wheat sourdough or preservative-free bakery bread.
-   - If soft drink/cola -> sparkling natural water or fermented kombucha.
-2. CLEAN FORMULATION: Each alternative must have zero palm oil, zero artificial sweeteners, significantly less or zero refined sugar, and no harmful chemical preservatives.
-3. DIFFERENT BRAND: Do NOT recommend the same brand as "{p_name}".
+   - If biscuits/cookies -> clean millet or sourdough cookies with zero palm oil and zero refined sugar (e.g. Slurrp Farm, The Whole Truth).
+   - If chips/namkeen -> roasted makhana, popped potato chips, or baked snacks (e.g. The Whole Truth, Slurrp Farm, TagZ).
+   - If dairy/milk -> certified organic A2 cow milk (e.g. Akshayakalpa, Two Brothers, Country Delight).
+   - If bread -> 100% whole wheat sourdough or preservative-free bakery bread (e.g. The Baker's Dozen, The Whole Truth).
+   - If soft drink/cola -> sparkling natural mineral water or fermented kombucha.
+3. CLEAN FORMULATION: Each alternative must have zero palm oil, zero artificial sweeteners, significantly less or zero refined sugar, and no harmful chemical preservatives.
+4. DIFFERENT BRAND: Do NOT recommend the same brand as "{p_name}".
 
 Return ONLY a JSON list of 2 to 3 product brand and item names:
 ["Brand Name Product 1", "Brand Name Product 2"]

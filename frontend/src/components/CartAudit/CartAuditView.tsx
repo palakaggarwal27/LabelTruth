@@ -23,6 +23,14 @@ import {
   Eye
 } from 'lucide-react';
 
+const CART_AUDIT_STEPS = [
+  "Extracting items from cart screenshots / store receipts...",
+  "Auditing packaging, ingredients, and nutrition tables against FSSAI standards...",
+  "Screening clinical contraindications against your personal health profile...",
+  "Researching verified cleaner Indian brand alternatives & checking dark-store availability...",
+  "Calculating nutritional uplift score and clean ingredient delta..."
+];
+
 export const CartAuditView: React.FC = () => {
   const { activeProfile, profile } = useHealthProfile();
   const currentProfile = activeProfile || profile;
@@ -35,7 +43,7 @@ export const CartAuditView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CartAuditResponse | null>(null);
   const [inspectItem, setInspectItem] = useState<CartItemAudit | null>(null);
-  const [auditStep, setAuditStep] = useState<string>("Extracting items from cart screenshots / store receipts...");
+  const [stepIndex, setStepIndex] = useState(0);
 
   const savePincode = (pin: string) => {
     setPincode(pin);
@@ -59,27 +67,16 @@ export const CartAuditView: React.FC = () => {
     }
   }, []);
 
-  // Progressive audit stage timer for cart inspection
+  // Progressive audit stage timer for cart inspection (loops indefinitely until complete)
   React.useEffect(() => {
     if (!loading) {
-      setAuditStep("Extracting items from cart screenshots / store receipts...");
+      setStepIndex(0);
       return;
     }
-    const timer1 = setTimeout(() => {
-      setAuditStep("Auditing packaging, ingredients, and nutrition tables against FSSAI standards...");
-    }, 1500);
-    const timer2 = setTimeout(() => {
-      setAuditStep("Screening clinical contraindications against your personal health profile...");
-    }, 4000);
-    const timer3 = setTimeout(() => {
-      setAuditStep("Researching verified cleaner Indian brand alternatives & checking dark-store availability...");
-    }, 7500);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-    };
+    const interval = setInterval(() => {
+      setStepIndex((prev) => (prev + 1) % CART_AUDIT_STEPS.length);
+    }, 2200);
+    return () => clearInterval(interval);
   }, [loading]);
 
   const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -342,11 +339,11 @@ export const CartAuditView: React.FC = () => {
                   <RefreshCw className="w-4 h-4 animate-spin text-emerald-600" />
                   <span>Forensic Cart Audit in Progress</span>
                 </div>
-                <p className="text-[11px] font-mono text-zinc-600">
-                  {auditStep}
+                <p className="text-[11px] font-mono text-zinc-600 transition-all duration-300">
+                  {CART_AUDIT_STEPS[stepIndex]}
                 </p>
-                <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1">
-                  <div className="w-full h-full animate-shimmer-bar rounded-full" />
+                <div className="w-full max-w-sm h-1.5 bg-zinc-200 rounded-full overflow-hidden mt-1 relative">
+                  <div className="animate-progress-stream rounded-full" />
                 </div>
               </div>
             )}

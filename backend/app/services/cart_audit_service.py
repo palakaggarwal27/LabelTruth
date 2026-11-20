@@ -45,8 +45,9 @@ User health profile: {profile_summary}
 
 Your task:
 1. Think of a SPECIFIC cleaner, healthier Indian brand/product that is a genuine same-category alternative to "{product_name}".
-   - It must be a real brand available in India (e.g. The Whole Truth, Early Foods, Slurrp Farm, Sattviko, Yoga Bar, Raw Pressery, Akshayakalpa, Wingreens, Epigamia, Ketofy, True Elements, Sorich, etc.)
-   - It must be realistically available on Zepto/Blinkit in India
+   - It must be a mainstream clean brand readily available on Zepto/Blinkit/Instamart in India (e.g. The Whole Truth, Slurrp Farm, Two Brothers Organic Farms, Akshayakalpa, Paper Boat, Raw Pressery, Epigamia, Yoga Bar, True Elements, Open Secret)
+   - STRICTLY AVOID obscure, hard-to-find artisanal brands or baby-food brands (such as Early Foods) that are rarely stocked on quick-commerce
+   - It must be realistically in stock on Zepto or Blinkit
    - It must have FEWER additives, no palm oil, no refined sugar (or significantly less), less processing
    - It must be from a DIFFERENT brand/product than "{product_name}"
    - Its estimated health score must be strictly greater than {score}
