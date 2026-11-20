@@ -25,26 +25,26 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
     },
   ]);
 
+  const MAX_QUESTIONS_PER_PRODUCT = 7;
+  const userQuestionsCount = messages.filter((m) => m.role === 'user').length;
+  const remainingQuestions = Math.max(0, MAX_QUESTIONS_PER_PRODUCT - userQuestionsCount);
+  const isLimitReached = userQuestionsCount >= MAX_QUESTIONS_PER_PRODUCT;
+
   // Update greeting when active scanned product or profile changes
   React.useEffect(() => {
     if (activeProductContext) {
-      setMessages((prev) => {
-        if (prev.length <= 1) {
-          return [
-            {
-              role: 'assistant',
-              content: `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). Evaluating for: ${currentProfile.name || 'Active Profile'}. What would you like to know about its ingredients or health impact?`,
-            },
-          ];
-        }
-        return prev;
-      });
+      setMessages([
+        {
+          role: 'assistant',
+          content: `Audit loaded for ${activeProductContext.product_name} (Score: ${activeProductContext.health_score}/100 — ${activeProductContext.personalized_verdict}). Evaluating for: ${currentProfile.name || 'Active Profile'}. What would you like to know about its ingredients or health impact?`,
+        },
+      ]);
     }
-  }, [activeProductContext, currentProfile.name]);
+  }, [activeProductContext?.product_name, currentProfile.name]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || isLimitReached) return;
 
     const userText = input.trim();
     setInput('');
@@ -100,12 +100,21 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
                 <span>• {activeProductContext ? activeProductContext.product_name : 'General Advisory'}</span>
               </div>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1 text-zinc-400 hover:text-zinc-800 rounded transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                isLimitReached 
+                  ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                  : 'bg-zinc-100 text-zinc-600 border-zinc-200'
+              }`}>
+                {isLimitReached ? '7/7 limit reached' : `${remainingQuestions} left`}
+              </span>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-1 text-zinc-400 hover:text-zinc-800 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Messages list */}
@@ -140,15 +149,20 @@ export const FloatingChatbot: React.FC<FloatingChatbotProps> = ({ activeProductC
             <input
               type="text"
               aria-label="Ask nutrition and FSSAI question"
-              placeholder="E.g., Is maltodextrin safe for my diabetes?"
+              placeholder={
+                isLimitReached
+                  ? "Question limit reached (7/7) for this product."
+                  : "E.g., Is maltodextrin safe for my diabetes?"
+              }
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 px-3 py-1.5 text-xs border border-zinc-200 rounded-md focus:outline-none focus:border-zinc-900"
+              disabled={loading || isLimitReached}
+              className="flex-1 px-3 py-1.5 text-xs border border-zinc-200 rounded-md focus:outline-none focus:border-zinc-900 disabled:bg-zinc-50 disabled:text-zinc-400"
             />
             <button
               type="submit"
               aria-label="Send message to Nutrition AI"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || isLimitReached}
               className="p-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md disabled:opacity-40"
             >
               <Send className="w-3.5 h-3.5" />

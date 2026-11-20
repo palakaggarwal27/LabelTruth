@@ -12,16 +12,15 @@ import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
 import { AlternativeCard } from '@/components/Results/AlternativeCard';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
-import { smartScan } from '@/lib/api';
-import { LabelAnalysisResult, ScannedHistoryItem } from '@/types';
-import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale, ShoppingCart } from 'lucide-react';
+import { smartScan, discoverAlternatives, evaluateProfileSafety, smartScanMultiProfile } from '@/lib/api';
+import { LabelAnalysisResult, ScannedHistoryItem, UserProfile, MultiProfileScanResult } from '@/types';
+import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale, ShoppingCart, Users, ShieldAlert, HeartPulse, CheckCircle2, ChevronRight } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
 import { HealthProfileManager } from '@/components/HealthProfileManager';
 import { NutrientMatrix } from '@/components/Results/NutrientMatrix';
 import { FALLBACK_PRESET_PRODUCTS } from '@/data/presets';
 
 import { DemoToggle } from '@/components/DemoToggle';
-import { evaluateProfileSafety } from '@/lib/api';
 import { LOCAL_DEMO_TIER_PRODUCTS } from '@/data/demoTiers';
 
 const SCAN_HISTORY_KEY = 'labeltruth_scan_history_v1';
@@ -32,8 +31,11 @@ export default function ScanPage() {
   const [activeTab, setActiveTab] = useState<'scan' | 'compare' | 'cart' | 'history'>('scan');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LabelAnalysisResult | null>(null);
+  const [multiProfileResult, setMultiProfileResult] = useState<MultiProfileScanResult | null>(null);
+  const [activeProfileTab, setActiveProfileTab] = useState<string>('household');
   const [history, setHistory] = useState<ScannedHistoryItem[]>([]);
   const [demoMode, setDemoMode] = useState(false);
   const [auditStep, setAuditStep] = useState<string>("Initializing forensic scan...");
@@ -65,11 +67,12 @@ export default function ScanPage() {
   React.useEffect(() => {
     if (result && currentProfile) {
       // Re-evaluate active result against active member in <50ms without re-running OCR
-      evaluateProfileSafety(result.product_name, currentProfile)
+      evaluateProfileSafety(result.product_name, currentProfile, result)
         .then((evalData) => {
           if (evalData && evalData.personalized_verdict) {
             setResult((prev) => prev ? {
               ...prev,
+              health_score: evalData.adjusted_health_score ?? prev.health_score,
               personalized_verdict: evalData.personalized_verdict as import('@/types').PersonalizedVerdict,
               ingredient_breakdown: evalData.ingredient_breakdown || prev.ingredient_breakdown
             } : null);
@@ -153,13 +156,53 @@ export default function ScanPage() {
     }
   };
 
-  const handleProcessImage = async (fileOrBlob: File | Blob) => {
+  const triggerAlternativeDiscovery = (productData: LabelAnalysisResult, pin?: string) => {
+    if (productData.health_score < 90) {
+      setIsLoadingAlternatives(true);
+      discoverAlternatives(
+        productData.product_name,
+        productData.health_score,
+        productData.category || '',
+        pin || '110001',
+        currentProfile
+      )
+        .then((alts) => {
+          if (alts && alts.length > 0) {
+            setResult((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                clean_alternatives: alts,
+                healthier_alternative: alts[0],
+              };
+            });
+          }
+        })
+        .catch((e) => console.warn('Async alternative discovery error:', e))
+        .finally(() => {
+          setIsLoadingAlternatives(false);
+        });
+    }
+  };
+
+  const handleProcessImage = async (fileOrBlob: File | Blob, selectedProfiles?: UserProfile[]) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await smartScan({ imageFile: fileOrBlob }, currentProfile);
-      setResult(data);
-      saveToHistory(data, fileOrBlob);
+      if (selectedProfiles && selectedProfiles.length > 1) {
+        const data = await smartScanMultiProfile({ imageFile: fileOrBlob }, selectedProfiles);
+        setMultiProfileResult(data);
+        setResult(data.base_product);
+        setActiveProfileTab('household');
+        saveToHistory(data.base_product, fileOrBlob);
+        triggerAlternativeDiscovery(data.base_product);
+      } else {
+        setMultiProfileResult(null);
+        const data = await smartScan({ imageFile: fileOrBlob }, currentProfile);
+        setResult(data);
+        saveToHistory(data, fileOrBlob);
+        triggerAlternativeDiscovery(data);
+      }
     } catch (err: unknown) {
       const errorObj = err as { response?: { data?: { detail?: string } } };
       console.error('Analysis failed:', err);
@@ -173,13 +216,36 @@ export default function ScanPage() {
     }
   };
 
-  const handleProcessQuery = async (queryText: string, pincode?: string) => {
+  const handleProcessQuery = async (queryText: string, pincode?: string, selectedProfiles?: UserProfile[]) => {
     setLoading(true);
     setError(null);
     const normalized = queryText.trim().toLowerCase();
     const isUrl = normalized.startsWith('http://') || normalized.startsWith('https://');
 
-    // 1. Check offline demo suite if demo mode is enabled or product query matches a demo tier (never for live URLs)
+    // 1. Multi-profile simultaneous scan if >1 profile selected
+    if (selectedProfiles && selectedProfiles.length > 1) {
+      try {
+        const data = await smartScanMultiProfile({ query: queryText }, selectedProfiles, pincode);
+        setMultiProfileResult(data);
+        setResult(data.base_product);
+        setActiveProfileTab('household');
+        saveToHistory(data.base_product);
+        triggerAlternativeDiscovery(data.base_product, pincode);
+      } catch (err: unknown) {
+        const errorObj = err as { response?: { data?: { detail?: string } } };
+        setError(
+          errorObj.response?.data?.detail ||
+            `Multi-profile audit failed for "${queryText}". Try again or upload an image directly.`
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    setMultiProfileResult(null);
+
+    // 2. Check offline demo suite if demo mode is enabled or product query matches a demo tier (never for live URLs)
     if (!isUrl && (demoMode || LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS])) {
       let matchedKey: string | null = null;
 
@@ -207,7 +273,7 @@ export default function ScanPage() {
       }
     }
 
-    // 2. Check client-side history cache only on exact product name match if NOT older than 30 days
+    // 3. Check client-side history cache only on exact product name match if NOT older than 30 days
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     const cachedItem = history.find(
       (h) => h.result.product_name.trim().toLowerCase() === normalized
@@ -226,6 +292,7 @@ export default function ScanPage() {
       const data = await smartScan({ query: queryText, pincode: pincode || '110001', demoMode: isUrl ? false : demoMode }, currentProfile);
       setResult(data);
       saveToHistory(data);
+      triggerAlternativeDiscovery(data, pincode);
     } catch (err: unknown) {
       console.warn('Backend query error, checking local preset catalog:', err);
       // Check if user queried one of our exact demo products by exact name (never for URLs)
@@ -255,6 +322,8 @@ export default function ScanPage() {
 
   const handleSelectHistoryItem = (item: ScannedHistoryItem) => {
     setResult(item.result);
+    setMultiProfileResult(null);
+    setActiveProfileTab('household');
     setActiveTab('scan');
   };
 
@@ -277,7 +346,7 @@ export default function ScanPage() {
 
       {/* Active Household Profile Switcher */}
       <div className="mb-4">
-        <HealthProfileManager />
+        <HealthProfileManager activeProductName={result ? result.product_name : null} />
       </div>
 
       {/* Offline Demo Mode Sandbox Suite */}
@@ -417,48 +486,212 @@ export default function ScanPage() {
           )}
 
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Action Bar */}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono uppercase tracking-wider text-zinc-500">
-              Audit Complete
-            </span>
-            <button
-              onClick={() => setResult(null)}
-              className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold flex items-center gap-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Scan Another Label
-            </button>
+      ) : (() => {
+        const activeInsight = multiProfileResult && activeProfileTab !== 'household'
+          ? multiProfileResult.profiles_audited.find(
+              (p) => p.profile_id === activeProfileTab || p.profile_name === activeProfileTab
+            )
+          : null;
+
+        return (
+          <div className="space-y-6">
+            {/* Action Bar */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+                Audit Complete
+              </span>
+              <button
+                onClick={() => {
+                  setResult(null);
+                  setMultiProfileResult(null);
+                  setActiveProfileTab('household');
+                }}
+                className="px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-md text-xs font-semibold flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Scan Another Label
+              </button>
+            </div>
+
+            {/* Household Multi-Profile Tab Switcher */}
+            {multiProfileResult && (
+              <div className="bg-zinc-100 p-1.5 rounded-lg border border-zinc-200 flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setActiveProfileTab('household')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                    activeProfileTab === 'household'
+                      ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200'
+                      : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Family Overview</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                    multiProfileResult.household_verdict === 'SAFE FOR HOUSEHOLD'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : multiProfileResult.household_verdict === 'PARTIALLY SAFE (CAUTION)'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {multiProfileResult.household_verdict === 'SAFE FOR HOUSEHOLD' ? 'SAFE' : multiProfileResult.household_verdict === 'PARTIALLY SAFE (CAUTION)' ? 'CAUTION' : 'UNSAFE'}
+                  </span>
+                </button>
+
+                {multiProfileResult.profiles_audited.map((insight) => (
+                  <button
+                    key={insight.profile_id}
+                    onClick={() => setActiveProfileTab(insight.profile_id)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all ${
+                      activeProfileTab === insight.profile_id
+                        ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200'
+                        : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${
+                      insight.health_score >= 70 ? 'bg-emerald-500' : insight.health_score >= 40 ? 'bg-amber-500' : 'bg-rose-500'
+                    }`} />
+                    <span>{insight.profile_name}</span>
+                    <span className="font-mono text-[11px] font-bold text-zinc-700 bg-zinc-200/80 px-1.5 py-0.5 rounded">
+                      {insight.health_score}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Household Decision Matrix Overview */}
+            {multiProfileResult && activeProfileTab === 'household' && (
+              <div className="bg-white border border-zinc-200 rounded-lg p-5 sm:p-6 shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                      Simultaneous Household Evaluation ({multiProfileResult.profiles_audited.length} Profiles)
+                    </span>
+                    <h3 className="text-base sm:text-lg font-semibold text-zinc-900 mt-0.5">
+                      Family Purchase Decision Matrix
+                    </h3>
+                  </div>
+                  <div>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border ${
+                      multiProfileResult.household_verdict === 'SAFE FOR HOUSEHOLD'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : multiProfileResult.household_verdict === 'PARTIALLY SAFE (CAUTION)'
+                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                        : 'bg-rose-50 text-rose-800 border-rose-300'
+                    }`}>
+                      {multiProfileResult.household_verdict === 'SAFE FOR HOUSEHOLD' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <ShieldAlert className="w-4 h-4 text-rose-600" />
+                      )}
+                      {multiProfileResult.household_verdict}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-50 border border-zinc-200 rounded-md p-3.5 text-xs text-zinc-700 leading-relaxed">
+                  <span className="font-semibold text-zinc-900">Household Summary: </span>
+                  {multiProfileResult.household_summary}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {multiProfileResult.comparison_matrix.map((item, idx) => {
+                    const matchingInsight = multiProfileResult.profiles_audited.find(
+                      (p) => p.profile_name.toLowerCase() === item.profile_name.toLowerCase()
+                    );
+                    return (
+                      <div
+                        key={idx}
+                        className="border border-zinc-200 rounded-md p-4 bg-white flex flex-col justify-between hover:border-zinc-400 transition-colors"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-zinc-900">{item.profile_name}</span>
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                              item.health_score >= 70
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : item.health_score >= 40
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              Score: {item.health_score}/100
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-semibold text-zinc-600 mb-2">
+                            Verdict: <span className="font-mono text-zinc-900">{item.personalized_verdict}</span>
+                          </div>
+                          <p className="text-xs text-zinc-600 leading-normal line-clamp-3">
+                            {item.key_issue}
+                          </p>
+                        </div>
+
+                        {matchingInsight && (
+                          <button
+                            onClick={() => setActiveProfileTab(matchingInsight.profile_id)}
+                            className="mt-4 pt-2 border-t border-zinc-100 text-[11px] font-semibold text-zinc-900 hover:text-emerald-700 flex items-center justify-between w-full"
+                          >
+                            <span>View {item.profile_name}&apos;s Audit</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Individual Tailored Profile Notice */}
+            {activeInsight && (
+              <div className="bg-zinc-900 text-white rounded-md px-4 py-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <HeartPulse className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    Showing tailored clinical evaluation for <strong className="text-white">{activeInsight.profile_name}</strong>
+                  </span>
+                </div>
+                {activeInsight.contraindications && activeInsight.contraindications.length > 0 && (
+                  <span className="text-[11px] bg-rose-950/80 text-rose-200 border border-rose-800 px-2 py-0.5 rounded font-mono">
+                    {activeInsight.contraindications.length} Contraindication(s) Flagged
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Results components */}
+            <ScoreCard
+              productName={result.product_name}
+              healthScore={activeInsight ? activeInsight.health_score : result.health_score}
+              verdict={activeInsight ? activeInsight.personalized_verdict : result.personalized_verdict}
+              summary={activeInsight ? activeInsight.personalized_summary : result.simple_summary}
+            />
+
+            <RedFlagsCard
+              deceptions={result.deceptive_claims_flagged}
+              violations={result.fssai_violations}
+            />
+
+            <IngredientAccordion
+              ingredients={
+                activeInsight && activeInsight.ingredient_warnings && activeInsight.ingredient_warnings.length > 0
+                  ? activeInsight.ingredient_warnings
+                  : result.ingredient_breakdown
+              }
+            />
+
+            <NutrientMatrix 
+              matrix={result.nutrient_integrity} 
+              nutritionCard={result.nutrition_card}
+            />
+
+            <AlternativeCard 
+              alternative={result.healthier_alternative} 
+              cleanAlternatives={result.clean_alternatives}
+              isLoadingAlternatives={isLoadingAlternatives}
+            />
           </div>
-
-          {/* Results components */}
-          <ScoreCard
-            productName={result.product_name}
-            healthScore={result.health_score}
-            verdict={result.personalized_verdict}
-            summary={result.simple_summary}
-          />
-
-          <RedFlagsCard
-            deceptions={result.deceptive_claims_flagged}
-            violations={result.fssai_violations}
-          />
-
-          <IngredientAccordion ingredients={result.ingredient_breakdown} />
-
-          <NutrientMatrix 
-            matrix={result.nutrient_integrity} 
-            nutritionCard={result.nutrition_card}
-          />
-
-          <AlternativeCard 
-            alternative={result.healthier_alternative} 
-            cleanAlternatives={result.clean_alternatives}
-          />
-        </div>
-      )}
+        );
+      })()}
 
       {/* Floating Chatbot grounded in current scan */}
       <FloatingChatbot activeProductContext={result} />

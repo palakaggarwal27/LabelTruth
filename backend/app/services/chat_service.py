@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Optional, List
 from google import genai
+from google.genai import types
 
 from app.config import GEMINI_API_KEY, GEMINI_API_KEYS
 from app.schemas.chat import ChatMessage
@@ -102,6 +103,17 @@ class ChatService:
                     "weight ingredient list. Watch for disguised sugars (maltodextrin, liquid glucose) and synthetic colorants like INS 150d."
                 )
 
+        # Enforce question limit per product session (max 7 questions) to strictly cap API token usage
+        user_questions_count = sum(
+            1 for m in history
+            if (hasattr(m, 'role') and getattr(m, 'role', '') == 'user') or (isinstance(m, dict) and m.get('role') == 'user')
+        )
+        if user_questions_count >= 7:
+            return (
+                "You have reached the maximum consultation limit (7 questions) for this product audit "
+                "to conserve resources. Feel free to scan another product or review the full forensic breakdown above."
+            )
+
         system = CHAT_SYSTEM_PROMPT.replace(
             "{user_profile_json}", json.dumps(user_profile or {}, indent=2)
         ).replace(
@@ -110,14 +122,15 @@ class ChatService:
 
         full_prompt = f"{system}\n\n"
         for msg in history[-6:]:
-            full_prompt += f"{msg.role.upper()}: {msg.content}\n"
+            role = getattr(msg, 'role', '') if hasattr(msg, 'role') else (msg.get('role') if isinstance(msg, dict) else 'USER')
+            content = getattr(msg, 'content', '') if hasattr(msg, 'content') else (msg.get('content') if isinstance(msg, dict) else str(msg))
+            full_prompt += f"{str(role).upper()}: {content}\n"
         full_prompt += f"USER: {message}\nASSISTANT:"
 
         ACTIVE_MODELS = [
             "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-3.8-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
             "gemini-flash-latest"
         ]
 
@@ -135,7 +148,11 @@ class ChatService:
                 try:
                     response = cl.models.generate_content(
                         model=model_name,
-                        contents=full_prompt
+                        contents=full_prompt,
+                        config=types.GenerateContentConfig(
+                            max_output_tokens=350,
+                            temperature=0.3
+                        )
                     )
                     if response and response.text:
                         return response.text.strip()

@@ -7,7 +7,7 @@ import { useHealthProfile } from '@/context/HealthProfileContext';
 import { 
   ShoppingCart, 
   UploadCloud, 
-  Link as LinkIcon, 
+  ListPlus, 
   Sparkles, 
   RefreshCw, 
   ArrowRight, 
@@ -17,22 +17,24 @@ import {
   CheckCircle2, 
   AlertCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X,
+  Image as ImageIcon
 } from 'lucide-react';
 
 export const CartAuditView: React.FC = () => {
   const { activeProfile, profile } = useHealthProfile();
   const currentProfile = activeProfile || profile;
 
-  const [inputMode, setInputMode] = useState<'url' | 'screenshot'>('url');
-  const [cartUrl, setCartUrl] = useState('');
-  const [cartImage, setCartImage] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<'screenshots' | 'item_list'>('screenshots');
+  const [cartImages, setCartImages] = useState<File[]>([]);
+  const [itemNamesText, setItemNamesText] = useState('');
   const [pincode, setPincode] = useState('110001');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CartAuditResponse | null>(null);
   const [detectingLoc, setDetectingLoc] = useState(false);
-  const [auditStep, setAuditStep] = useState<string>("Launching TinyFish Browser to access cart & bypass WAF challenges...");
+  const [auditStep, setAuditStep] = useState<string>("Extracting items from cart screenshots / store receipts...");
 
   const savePincode = (pin: string) => {
     setPincode(pin);
@@ -62,18 +64,18 @@ export const CartAuditView: React.FC = () => {
   // Progressive audit stage timer for cart inspection
   React.useEffect(() => {
     if (!loading) {
-      setAuditStep("Launching TinyFish Browser to access cart & bypass WAF challenges...");
+      setAuditStep("Extracting items from cart screenshots / store receipts...");
       return;
     }
     const timer1 = setTimeout(() => {
-      setAuditStep("Extracting cart items, ingredients, and nutritional tables...");
-    }, 1800);
+      setAuditStep("Auditing packaging, ingredients, and nutrition tables against FSSAI standards...");
+    }, 1500);
     const timer2 = setTimeout(() => {
-      setAuditStep("Auditing items against FSSAI standards & active clinical profile...");
-    }, 4800);
+      setAuditStep("Screening clinical contraindications against your personal health profile...");
+    }, 4000);
     const timer3 = setTimeout(() => {
-      setAuditStep("TinyFish Agent searching live dark-store inventory for verified cleaner swaps at PIN...");
-    }, 8200);
+      setAuditStep("Researching verified cleaner Indian brand alternatives & checking dark-store availability...");
+    }, 7500);
 
     return () => {
       clearTimeout(timer1);
@@ -181,14 +183,28 @@ export const CartAuditView: React.FC = () => {
     );
   };
 
+  const handleAddFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setCartImages(prev => {
+        const combined = [...prev, ...newFiles];
+        return combined.slice(0, 8); // max 8 screenshots / bill photos
+      });
+    }
+  };
+
+  const handleRemoveFile = (idx: number) => {
+    setCartImages(prev => prev.filter((_, i) => i !== idx));
+  };
+
   const handleAudit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputMode === 'url' && !cartUrl.trim()) {
-      setError('Please enter a shared cart URL or product link.');
+    if (inputMode === 'screenshots' && cartImages.length === 0) {
+      setError('Please upload at least one screenshot of your quick-commerce cart or supermarket receipt.');
       return;
     }
-    if (inputMode === 'screenshot' && !cartImage) {
-      setError('Please upload a screenshot of your quick-commerce cart.');
+    if (inputMode === 'item_list' && !itemNamesText.trim()) {
+      setError('Please enter at least one product name in the list.');
       return;
     }
 
@@ -197,8 +213,8 @@ export const CartAuditView: React.FC = () => {
     try {
       const data = await auditCart(
         {
-          imageFile: inputMode === 'screenshot' ? (cartImage || undefined) : undefined,
-          cartUrl: inputMode === 'url' ? cartUrl.trim() : undefined,
+          images: inputMode === 'screenshots' ? cartImages : undefined,
+          itemNames: inputMode === 'item_list' ? itemNamesText.trim() : undefined,
           pincode: pincode.trim() || '110001',
         },
         currentProfile
@@ -206,7 +222,7 @@ export const CartAuditView: React.FC = () => {
       setResult(data);
     } catch (err: unknown) {
       const errorObj = err as { response?: { data?: { detail?: string } } };
-      setError(errorObj.response?.data?.detail || 'Failed to audit cart. Please verify your link or image.');
+      setError(errorObj.response?.data?.detail || 'Failed to audit cart. Please check your photos or item names.');
     } finally {
       setLoading(false);
     }
@@ -241,42 +257,47 @@ export const CartAuditView: React.FC = () => {
         <div className="flex items-center gap-2 mb-1">
           <ShoppingCart className="w-4 h-4 text-zinc-900" />
           <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-600">
-            Quick-Commerce Cart Audit
+            Quick-Commerce & Supermarket Cart Audit
           </span>
         </div>
-        <h2 className="text-lg font-semibold text-zinc-900">Audit Your Entire Zepto / Blinkit Cart</h2>
+        <h2 className="text-lg font-semibold text-zinc-900">Forensic Audit for Your Entire Grocery Cart</h2>
         <p className="text-xs text-zinc-500 mt-1 max-w-2xl font-light leading-relaxed">
-          Share your cart URL or upload a cart screenshot. TinyFish and Gemini scan every packaged item in your cart, check for health profile contraindications (like acidity triggers, high glycemic sugars, or allergens), and automatically discover cleaner swaps on the same app with direct product detail page (PDP) links.
+          Upload screenshots from Zepto, Blinkit, Instamart, or physical supermarket receipts (DMart, Reliance). LabelTruth automatically filters out non-food items, checks every food product for clinical contraindications and FSSAI violations, and discovers verified clean swaps.
         </p>
       </div>
 
       {!result ? (
         <div className="bg-white border border-zinc-200 rounded-lg p-6 sm:p-8">
           {/* Mode Switcher Tabs */}
-          <div className="flex items-center gap-3 mb-6 border-b border-zinc-100 pb-3">
+          <div className="flex items-center gap-2 mb-6 border-b border-zinc-100 pb-3">
             <button
               type="button"
-              onClick={() => setInputMode('url')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                inputMode === 'url'
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              <LinkIcon className="w-3.5 h-3.5" />
-              <span>Share Cart Link</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setInputMode('screenshot')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                inputMode === 'screenshot'
+              onClick={() => setInputMode('screenshots')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                inputMode === 'screenshots'
                   ? 'bg-zinc-900 text-white'
                   : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900'
               }`}
             >
               <UploadCloud className="w-3.5 h-3.5" />
-              <span>Upload Cart Screenshot</span>
+              <span>Screenshots or Supermarket Bill</span>
+              {cartImages.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-emerald-600 text-white text-[10px] rounded-full">
+                  {cartImages.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('item_list')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                inputMode === 'item_list'
+                  ? 'bg-zinc-900 text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              <ListPlus className="w-3.5 h-3.5" />
+              <span>Enter Product Names List</span>
             </button>
           </div>
 
@@ -311,69 +332,100 @@ export const CartAuditView: React.FC = () => {
               </div>
             </div>
 
-            {/* URL Input Form */}
-            {inputMode === 'url' && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-900 block">
-                  Quick-Commerce Cart or Shared Basket URL
-                </label>
-                <input
-                  type="url"
-                  value={cartUrl}
-                  onChange={(e) => setCartUrl(e.target.value)}
-                  placeholder="e.g. https://www.zepto.com/cart or https://blinkit.com/cart/..."
-                  className="w-full px-3 py-2 text-xs border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white"
-                  disabled={loading}
-                />
-                <p className="text-[11px] text-zinc-400 font-light">
-                  Supports Zepto, Blinkit, Swiggy Instamart, and BigBasket shared cart links.
-                </p>
-              </div>
-            )}
-
-            {/* Screenshot Upload Form */}
-            {inputMode === 'screenshot' && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-900 block">
-                  Upload Cart Screenshot
-                </label>
+            {/* Screenshots / Bills Form */}
+            {inputMode === 'screenshots' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-900 block">
+                    Upload Quick-Commerce Screenshots or Store Receipts
+                  </label>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {cartImages.length} / 8 photos selected
+                  </span>
+                </div>
+                
                 <div className="border-2 border-dashed border-zinc-200 rounded-lg p-6 text-center hover:bg-zinc-50 transition-colors">
                   <input
                     type="file"
                     id="cart-screenshot-input"
                     accept="image/*"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setCartImage(e.target.files[0]);
-                      }
-                    }}
+                    multiple
+                    onChange={handleAddFiles}
                     className="hidden"
                   />
                   <div className="flex flex-col items-center">
                     <UploadCloud className="w-8 h-8 text-zinc-400 mb-2" />
-                    {cartImage ? (
-                      <div className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-200">
-                        Selected: {cartImage.name}
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-xs text-zinc-700 font-medium">
-                          Drop your cart screenshot here, or browse
-                        </p>
-                        <p className="text-[11px] text-zinc-400 mt-0.5">
-                          PNG, JPG, or WEBP up to 10MB
-                        </p>
-                      </>
-                    )}
+                    <p className="text-xs text-zinc-700 font-medium">
+                      Upload screenshots from Zepto, Blinkit, Instamart, or physical supermarket receipts
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Select multiple images to capture all items. Non-food products are automatically filtered out.
+                    </p>
                     <button
                       type="button"
                       onClick={() => document.getElementById('cart-screenshot-input')?.click()}
-                      className="mt-3 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded text-xs font-medium transition-colors"
+                      className="mt-3 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded text-xs font-medium transition-colors"
                     >
-                      Browse Screenshot
+                      {cartImages.length > 0 ? '+ Add More Screenshots / Photos' : 'Browse Screenshots or Photos'}
                     </button>
                   </div>
                 </div>
+
+                {/* Selected Image Chips */}
+                {cartImages.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[11px] font-mono uppercase text-zinc-500 font-medium">
+                      Selected Images to Audit:
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {cartImages.map((file, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-100 border border-zinc-200 rounded text-xs text-zinc-800"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                          <span className="max-w-[160px] truncate">{file.name}</span>
+                          <span className="text-[10px] text-zinc-400 font-mono">
+                            ({(file.size / 1024).toFixed(0)} KB)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFile(idx)}
+                            className="ml-1 text-zinc-400 hover:text-rose-600 transition-colors"
+                            title="Remove image"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Item List Form */}
+            {inputMode === 'item_list' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-zinc-900 block">
+                    Enter or Paste Product Names
+                  </label>
+                  <span className="text-[11px] text-zinc-400">
+                    One product per line or comma-separated
+                  </span>
+                </div>
+                <textarea
+                  rows={5}
+                  value={itemNamesText}
+                  onChange={(e) => setItemNamesText(e.target.value)}
+                  placeholder={`Haldirams Nagpur Bhujia Sev\nBritannia Bourbon Biscuits\nAmul Salted Butter\nCoca-Cola 750ml\nLay's India's Magic Masala\nMaggi 2-Minute Noodles`}
+                  className="w-full px-3 py-2 text-xs border border-zinc-200 rounded focus:outline-none focus:border-zinc-900 bg-white font-mono leading-relaxed"
+                  disabled={loading}
+                />
+                <p className="text-[11px] text-zinc-500 font-light">
+                  Enter grocery items from your cart. LabelTruth audits each product against authentic packaging, checks for clinical contraindications, and recommends cleaner swaps.
+                </p>
               </div>
             )}
 
@@ -543,9 +595,9 @@ export const CartAuditView: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => toggleExpanded(idx)}
-                            className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-700 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-2 py-1 rounded transition-colors"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-700 hover:text-zinc-900 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 px-2.5 py-1 rounded transition-colors"
                           >
-                            <span>{isExpanded ? 'Hide Details' : 'See Details'}</span>
+                            <span>{isExpanded ? 'Close Forensic Audit' : 'View Full Forensic Audit'}</span>
                             {isExpanded ? (
                               <ChevronUp className="w-3.5 h-3.5" />
                             ) : (

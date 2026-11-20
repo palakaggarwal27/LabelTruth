@@ -81,6 +81,7 @@ export interface LabelAnalysisResult {
   healthier_alternative: HealthierAlternative;
   clean_alternatives?: HealthierAlternative[];
   nutrient_integrity?: NutrientIntegrityMatrix;
+  category?: string;
   is_food_label?: boolean;
   label_type?: 'FRONT_OF_PACK' | 'BACK_OF_PACK' | 'FULL_PANEL' | 'NOT_A_LABEL';
   cleaner_alternative_exists_in_market?: boolean;
@@ -169,4 +170,52 @@ export interface CartAuditResponse {
   red_flags_prevented_count: number;
   summary: string;
   items: CartItemAudit[];
+}
+
+export interface DimensionComparison {
+  category: string;
+  winner: 'PRODUCT_A' | 'PRODUCT_B' | 'TIE' | 'NEITHER';
+  explanation: string;
+}
+
+export interface ProductComparisonResult {
+  winner: 'PRODUCT_A' | 'PRODUCT_B' | 'TIE' | 'NEITHER_RECOMMENDED';
+  verdict_title: string;
+  verdict_summary: string;
+  score_diff: number;
+  personalized_impact: string;
+  key_tradeoffs: string[];
+  dimension_breakdown: DimensionComparison[];
+  superior_alternative?: HealthierAlternative;
+}
+
+export interface CompareProductsRequest {
+  product_a: LabelAnalysisResult;
+  product_b: LabelAnalysisResult;
+  user_profile: UserProfile;
+  pincode?: string;
+}
+
+export interface ProfileAuditInsight {
+  profile_id: string;
+  profile_name: string;
+  health_score: number;
+  personalized_verdict: PersonalizedVerdict;
+  personalized_summary: string;
+  contraindications: string[];
+  ingredient_warnings: IngredientItem[];
+}
+
+export interface MultiProfileScanResult {
+  product_name: string;
+  base_product: LabelAnalysisResult;
+  profiles_audited: ProfileAuditInsight[];
+  household_verdict: 'SAFE FOR HOUSEHOLD' | 'PARTIALLY SAFE (CAUTION)' | 'UNSAFE FOR FAMILY MEMBERS';
+  household_summary: string;
+  comparison_matrix: {
+    profile_name: string;
+    health_score: number;
+    personalized_verdict: string;
+    key_issue: string;
+  }[];
 }

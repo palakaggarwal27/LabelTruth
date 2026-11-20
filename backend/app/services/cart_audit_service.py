@@ -64,27 +64,30 @@ If NO genuinely cleaner alternative exists (the product is already a clean whole
 {{"name": null}}
 """
 
-CART_OCR_PROMPT = """You are LabelTruth Cart Intelligence Auditor.
-Carefully examine this quick-commerce cart screenshot (from Zepto, Blinkit, Swiggy Instamart, BigBasket, or Amazon Fresh).
-Extract:
-1. "store_name": The quick-commerce app (e.g. Zepto, Blinkit, Swiggy Instamart).
-2. "items": The list of distinct grocery or packaged food items in the cart with their full product name (including brand if visible) and quantity.
+CART_OR_BILL_OCR_PROMPT = """You are LabelTruth Cart & Grocery Bill Forensic Auditor.
+Examine this image, which is either:
+1. A digital quick-commerce cart screenshot (from Zepto, Blinkit, Swiggy Instamart, BigBasket, Amazon Fresh, etc.) OR
+2. A photo of a printed supermarket / shopping mall store receipt or bill (e.g. DMart, Reliance Smart / Fresh, Nature's Basket, More, Spencer's, or local supermarket).
+
+YOUR FORENSIC TASK:
+1. Detect "store_name": The quick-commerce app or supermarket name (e.g. Zepto, Blinkit, DMart, Reliance Smart).
+2. Extract ONLY PACKAGED FOOD, BEVERAGE, OR GROCERY PRODUCTS in "items":
+   - STRICTLY EXCLUDE non-food items: detergents, soaps, shampoos, toothbrushes, floor cleaners, kitchenware, toilet paper, batteries, carry bags.
+   - STRICTLY EXCLUDE unbranded loose produce if not packaged: e.g. loose onions/potatoes. (Packaged pulses, packaged millets, breads, snacks, sauces, dairy, cereals, beverages MUST be included).
+   - Normalize product name: Include brand name, product title, and flavor/variant if visible (e.g. "Maggi 2-Minute Masala Noodles", "Amul Pasteurized Butter 500g", "Britannia Brown Bread").
+   - Extract "quantity": integer count (default 1).
 
 Return ONLY valid JSON:
 {
-  "store_name": "Zepto",
+  "store_name": "DMart",
   "items": [
     {
-      "product_name": "Exact Brand and Product Name",
+      "product_name": "Full Brand Product Name",
       "quantity": 1
     }
   ]
 }
-If no food products are visible or legible, return:
-{
-  "store_name": "Quick-Commerce",
-  "items": []
-}
+If no packaged food items are found or legible, return {"store_name": "Store", "items": []}
 """
 
 class CartAuditService:
@@ -102,8 +105,8 @@ class CartAuditService:
                 pass
         return clients or ([self.client] if self.client else [])
 
-    async def extract_items_from_image(self, image_bytes: bytes) -> Dict[str, Any]:
-        """Extract store and items from cart screenshot using Gemini Flash Vision"""
+    async def extract_items_from_single_image(self, image_bytes: bytes) -> Dict[str, Any]:
+        """Extract store and packaged food items from a single cart screenshot or store bill"""
         try:
             pil_img = Image.open(io.BytesIO(image_bytes))
             if pil_img.mode in ("RGBA", "P"):
@@ -117,8 +120,8 @@ class CartAuditService:
 
         ACTIVE_MODELS = [
             "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.8-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
             "gemini-flash-latest"
         ]
 
@@ -131,7 +134,7 @@ class CartAuditService:
                         model=model_name,
                         contents=[
                             types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                            CART_OCR_PROMPT
+                            CART_OR_BILL_OCR_PROMPT
                         ],
                         config=types.GenerateContentConfig(response_mime_type="application/json")
                     )
@@ -144,60 +147,68 @@ class CartAuditService:
                         txt = txt[:-3]
                     return json.loads(txt.strip())
                 except Exception as e:
-                    logger.warning(f"Cart image OCR with {model_name} failed: {e}")
+                    logger.warning(f"Cart/bill OCR with {model_name} failed: {e}")
                     continue
 
-        return {"store_name": "Quick-Commerce", "items": []}
+        return {"store_name": "Store", "items": []}
 
-    async def extract_items_from_url(self, cart_url: str, pincode: str = "110001") -> Dict[str, Any]:
-        """
-        Extract items from cart URL using TinyFish browser agent with Gemini fallback text parsing.
-        """
-        # Step 1: TinyFish agent browser navigation
-        raw_data = await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode)
-        items = raw_data.get("items", [])
-        store_name = raw_data.get("store_name", "Quick-Commerce")
+    async def extract_items_from_images(self, images_bytes_list: List[bytes]) -> Dict[str, Any]:
+        """Extract and merge deduplicated packaged food items across multiple screenshots or bill photos"""
+        if not images_bytes_list:
+            return {"store_name": "Store", "items": []}
 
-        if items:
-            return raw_data
+        tasks = [self.extract_items_from_single_image(img_b) for img_b in images_bytes_list[:8]]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Step 2: TinyFetch static DOM + Gemini text parsing
-        try:
-            import httpx
-            from app.config import TINYFISH_API_KEY
-            from app.services.tinyfish_service import is_waf_block_content
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                res = await client.post(
-                    "https://api.fetch.tinyfish.ai",
-                    headers={"X-API-Key": TINYFISH_API_KEY, "Content-Type": "application/json"},
-                    json={"urls": [cart_url]}
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    results = data.get("results", [])
-                    if results:
-                        page_text = str(results[0].get("text", "") or results[0].get("content", ""))
-                        if page_text and not is_waf_block_content(page_text):
-                            prompt = CART_TEXT_PARSE_PROMPT.format(text=page_text[:4000])
-                            parsed_json = self._call_gemini_text(prompt, max_output=1024)
-                            if parsed_json:
-                                parsed = json.loads(parsed_json)
-                                if parsed.get("items"):
-                                    return {
-                                        "store_name": parsed.get("store_name") or store_name,
-                                        "items": parsed["items"]
-                                    }
-        except Exception as e:
-            logger.warning(f"TinyFetch + Gemini parse fallback notice: {e}")
+        merged_items: Dict[str, int] = {}
+        detected_store = "Store"
 
-        return {"store_name": store_name, "items": []}
+        for res in results:
+            if isinstance(res, dict):
+                st = res.get("store_name", "")
+                if st and st not in ("Store", "Quick-Commerce"):
+                    detected_store = st
+                for it in res.get("items", []):
+                    p_name = it.get("product_name", "").strip()
+                    if p_name and len(p_name) > 2:
+                        qty = int(it.get("quantity", 1))
+                        # Match existing item case-insensitively
+                        existing_key = next((k for k in merged_items if k.lower() == p_name.lower()), None)
+                        if existing_key:
+                            merged_items[existing_key] += qty
+                        else:
+                            merged_items[p_name] = qty
+
+        final_items = [{"product_name": name, "quantity": qty} for name, qty in merged_items.items()]
+        return {"store_name": detected_store, "items": final_items}
+
+    def parse_items_from_text_list(self, text: str) -> List[Dict[str, Any]]:
+        """Parses user-entered comma-separated or newline-separated product list"""
+        if not text:
+            return []
+        items = []
+        raw_lines = re.split(r'[\n,]+', text)
+        seen = set()
+        for raw in raw_lines:
+            cleaned = raw.strip()
+            if not cleaned:
+                continue
+            qty = 1
+            qty_match = re.search(r'^(?:(\d+)\s*[xX*]\s*|\s*(\d+)\s+)', cleaned)
+            if qty_match:
+                qty = int(qty_match.group(1) or qty_match.group(2) or 1)
+                cleaned = cleaned[qty_match.end():].strip()
+            if len(cleaned) > 2 and cleaned.lower() not in seen:
+                seen.add(cleaned.lower())
+                items.append({"product_name": cleaned.title(), "quantity": max(1, qty)})
+        return items
 
     def _call_gemini_text(self, prompt: str, max_output: int = 512) -> Optional[str]:
         """Synchronous Gemini text call for JSON extraction"""
         ACTIVE_MODELS = [
             "gemini-flash-lite-latest",
-            "gemini-3.5-flash-lite",
-            "gemini-3.8-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
             "gemini-flash-latest"
         ]
         for cl in self._get_active_clients():
@@ -321,6 +332,24 @@ class CartAuditService:
                 return None  # Gemini says product is already optimal
 
             alt_name = data["name"]
+
+            # Try authentic packaging research via TinySearch + scoring engine
+            audited_alt = await tinyfish_service.audit_alternative_candidate(alt_name, user_profile, item_score)
+            if audited_alt and audited_alt.get("health_score", 0) > item_score:
+                return HealthierAlternative(
+                    name=audited_alt["name"],
+                    product_name=audited_alt["name"],
+                    health_score=audited_alt["health_score"],
+                    key_benefit=audited_alt.get("key_benefit", "Cleaner formulation with fewer industrial additives."),
+                    price_comparison="Comparable",
+                    personalized_fit=audited_alt.get("personalized_fit", "Meets strict clinical health profile."),
+                    store_url=audited_alt.get("store_url"),
+                    direct_pdp_url=audited_alt.get("direct_pdp_url"),
+                    pincode_available=True,
+                    type="CLEAN_COMMERCIAL",
+                    reason=audited_alt.get("reason", "Verified cleaner ingredient profile.")
+                )
+
             alt_score = int(data.get("health_score", item_score + 12))
             key_benefit = data.get("key_benefit", "Cleaner ingredient profile with fewer additives.")
             search_url = data.get("search_url", "")
@@ -329,10 +358,10 @@ class CartAuditService:
             if alt_score <= item_score:
                 return None
 
-            # Build search URL if not provided
-            if not search_url:
-                query_slug = alt_name.lower().replace(" ", "+")
-                search_url = f"https://www.zepto.com/search?query={query_slug}"
+            from urllib.parse import quote_plus
+            encoded = quote_plus(alt_name)
+            google_shop = f"https://www.google.com/search?tbm=shop&q={encoded}"
+            zepto_shop = f"https://www.zepto.com/search?query={encoded}"
 
             return HealthierAlternative(
                 name=alt_name,
@@ -341,7 +370,8 @@ class CartAuditService:
                 key_benefit=key_benefit,
                 price_comparison="Comparable",
                 personalized_fit=reason,
-                direct_pdp_url=search_url,
+                store_url=zepto_shop,
+                direct_pdp_url=google_shop,
                 is_direct_pdp=False,
                 pincode_available=True,
                 type="CLEAN_COMMERCIAL",
@@ -507,33 +537,32 @@ class CartAuditService:
 
     async def audit_cart(
         self,
-        image_bytes: Optional[bytes],
-        cart_url: Optional[str],
-        pincode: str,
-        user_profile: UserProfile
+        images_bytes_list: Optional[List[bytes]] = None,
+        item_names_text: Optional[str] = None,
+        pincode: str = "110001",
+        user_profile: UserProfile = None
     ) -> CartAuditResponse:
-        """Full end-to-end cart audit using TinyFish browser agent, TinyFetch, and Gemini clinical reasoning"""
-        extracted = {}
-        if image_bytes:
-            extracted = await self.extract_items_from_image(image_bytes)
-        elif cart_url:
-            extracted = await self.extract_items_from_url(cart_url, pincode)
+        """
+        Full end-to-end cart & grocery bill audit.
+        Accepts multiple cart screenshots / store bills or a text item list.
+        """
+        user_profile = user_profile or UserProfile()
+        store_name = "Store"
+        raw_items = []
 
-        store_name = extracted.get("store_name") or "Zepto"
-        raw_items = extracted.get("items") or []
+        if images_bytes_list and len(images_bytes_list) > 0:
+            extracted = await self.extract_items_from_images(images_bytes_list)
+            store_name = extracted.get("store_name") or "Store"
+            raw_items = extracted.get("items") or []
+        elif item_names_text and item_names_text.strip():
+            raw_items = self.parse_items_from_text_list(item_names_text)
+            store_name = "Custom Grocery List"
 
-        # If extraction returned empty, provide a clean informative response instead of mock items
         if not raw_items:
-            if cart_url:
-                raise ValueError(
-                    "Quick-commerce cart URLs (on Zepto/Blinkit) are stored in your device's private browser session and cannot be accessed via a public link. "
-                    "Please take a screenshot of your cart screen and upload it here — our vision AI will extract and audit all your products instantly!"
-                )
-            else:
-                raise ValueError(
-                    "No food products or cart items were detected in the uploaded screenshot. "
-                    "Please ensure the cart screenshot clearly shows the item names and quantities."
-                )
+            raise ValueError(
+                "No packaged food products or items were detected. "
+                "Please upload cart screenshots, a photo of your supermarket receipt/bill, or enter item names."
+            )
 
         # Concurrently audit items in parallel via asyncio.gather
         tasks = [

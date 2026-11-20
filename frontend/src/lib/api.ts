@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult, IngredientItem, CartAuditResponse } from '@/types';
+import { LabelAnalysisResult, SurveyStatsResponse, PresetProduct, UserProfile, ConditionValidationResult, IngredientItem, CartAuditResponse, HealthierAlternative, ProductComparisonResult, MultiProfileScanResult } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -43,11 +43,19 @@ export const analyzeLabel = async (
 };
 
 export const evaluateProfileSafety = async (
-  productHash: string,
-  activeProfile: UserProfile
-): Promise<{ personalized_verdict: string; contraindications: string[]; ingredient_breakdown: IngredientItem[] }> => {
+  productNameOrHash: string,
+  activeProfile: UserProfile,
+  baseProduct?: LabelAnalysisResult
+): Promise<{
+  personalized_verdict: string;
+  adjusted_health_score: number;
+  contraindications: string[];
+  ingredient_breakdown: IngredientItem[];
+}> => {
   const res = await apiClient.post('/api/evaluate-profile-safety', {
-    product_hash: productHash,
+    product_name: productNameOrHash,
+    product_hash: productNameOrHash,
+    base_product: baseProduct,
     active_profile: activeProfile,
   });
   return res.data;
@@ -91,6 +99,29 @@ export const smartScan = async (
   }
 };
 
+export const smartScanMultiProfile = async (
+  input: { query?: string; imageFile?: Blob | File },
+  profiles: UserProfile[],
+  pincode?: string
+): Promise<MultiProfileScanResult> => {
+  const formData = new FormData();
+  if (input.imageFile) {
+    formData.append('image', input.imageFile, 'scan.jpg');
+  }
+  if (input.query) {
+    formData.append('query', input.query);
+  }
+  formData.append('pincode', pincode || '110001');
+  formData.append('profiles', JSON.stringify(profiles.slice(0, 3)));
+
+  const res = await apiClient.post<MultiProfileScanResult>('/api/smart-scan-multi-profile', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
+};
+
 export const sendChatMessage = async (
   message: string,
   history: { role: string; content: string }[],
@@ -107,12 +138,26 @@ export const sendChatMessage = async (
 };
 
 export const auditCart = async (
-  input: { imageFile?: Blob | File; cartUrl?: string; pincode?: string },
+  input: {
+    images?: (Blob | File)[];
+    imageFile?: Blob | File;
+    itemNames?: string;
+    cartUrl?: string;
+    pincode?: string;
+  },
   userProfile: UserProfile
 ): Promise<CartAuditResponse> => {
   const formData = new FormData();
-  if (input.imageFile) {
+  if (input.images && input.images.length > 0) {
+    input.images.forEach((img, idx) => {
+      formData.append('images', img, `cart_capture_${idx}.jpg`);
+    });
+  } else if (input.imageFile) {
     formData.append('image', input.imageFile, 'cart_capture.jpg');
+    formData.append('images', input.imageFile, 'cart_capture.jpg');
+  }
+  if (input.itemNames) {
+    formData.append('item_names', input.itemNames);
   }
   if (input.cartUrl) {
     formData.append('cart_url', input.cartUrl);
@@ -128,6 +173,28 @@ export const auditCart = async (
   return res.data;
 };
 
+export const discoverAlternatives = async (
+  productName: string,
+  currentHealthScore: number,
+  category: string = '',
+  pincode: string = '110001',
+  userProfile?: UserProfile
+): Promise<HealthierAlternative[]> => {
+  try {
+    const res = await apiClient.post<HealthierAlternative[]>('/api/discover-alternatives', {
+      product_name: productName,
+      category,
+      current_health_score: currentHealthScore,
+      pincode,
+      user_profile: userProfile,
+    });
+    return res.data;
+  } catch (err) {
+    console.warn('Failed to asynchronously discover alternatives:', err);
+    return [];
+  }
+};
+
 export const reverseGeocodePincode = async (lat: number, lon: number): Promise<string | null> => {
   try {
     const res = await apiClient.get<{ pincode: string | null; formatted_address?: string }>(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
@@ -136,4 +203,19 @@ export const reverseGeocodePincode = async (lat: number, lon: number): Promise<s
     console.warn("Backend reverse geocode request failed:", e);
     return null;
   }
+};
+
+export const compareProducts = async (
+  productA: LabelAnalysisResult,
+  productB: LabelAnalysisResult,
+  userProfile: UserProfile,
+  pincode?: string
+): Promise<ProductComparisonResult> => {
+  const res = await apiClient.post<ProductComparisonResult>('/api/compare-products', {
+    product_a: productA,
+    product_b: productB,
+    user_profile: userProfile,
+    pincode: pincode || '110001',
+  });
+  return res.data;
 };

@@ -179,3 +179,68 @@ def evaluate_profile_safety_offline(
         "ingredient_breakdown": updated_ingredients,
         "adjusted_health_score": adjusted_score
     }
+
+
+def create_profile_insight_from_base(
+    base_product: LabelAnalysisResult,
+    profile: UserProfile
+):
+    from app.schemas.multi_profile import ProfileAuditInsight
+    from app.schemas.analysis import IngredientItem
+    res = evaluate_profile_safety_offline(base_product, profile)
+    summary = res["contraindications"][0] if res["contraindications"] else "Safe for your dietary profile with no major clinical friction."
+    return ProfileAuditInsight(
+        profile_id=profile.id or "default",
+        profile_name=profile.name or "Member",
+        health_score=res["adjusted_health_score"],
+        personalized_verdict=res["personalized_verdict"],
+        personalized_summary=summary,
+        contraindications=res["contraindications"],
+        ingredient_warnings=[
+            IngredientItem(**i) if isinstance(i, dict) else i
+            for i in res["ingredient_breakdown"]
+        ]
+    )
+
+
+def create_multi_profile_result_offline(
+    base_product: LabelAnalysisResult,
+    profiles: List[UserProfile]
+):
+    from app.schemas.multi_profile import MultiProfileScanResult
+    insights = [create_profile_insight_from_base(base_product, p) for p in profiles[:3]]
+
+    # Determine household verdict
+    any_avoid = any(ins.personalized_verdict == "AVOID (VIOLATES PROFILE)" for ins in insights)
+    any_caution = any(ins.personalized_verdict == "CAUTION" for ins in insights)
+
+    if any_avoid:
+        hh_verdict = "UNSAFE FOR FAMILY MEMBERS"
+        violators = [ins.profile_name for ins in insights if ins.personalized_verdict == "AVOID (VIOLATES PROFILE)"]
+        hh_summary = f"Not recommended for family purchase: violates health profile for {', '.join(violators)}."
+    elif any_caution:
+        hh_verdict = "PARTIALLY SAFE (CAUTION)"
+        cautions = [ins.profile_name for ins in insights if ins.personalized_verdict == "CAUTION"]
+        hh_summary = f"Safe for some members, but exercise caution for {', '.join(cautions)}."
+    else:
+        hh_verdict = "SAFE FOR HOUSEHOLD"
+        hh_summary = "Safe for all evaluated family members with no major clinical contraindications."
+
+    matrix = [
+        {
+            "profile_name": ins.profile_name,
+            "health_score": ins.health_score,
+            "personalized_verdict": ins.personalized_verdict,
+            "key_issue": ins.contraindications[0] if ins.contraindications else "None flagged"
+        }
+        for ins in insights
+    ]
+
+    return MultiProfileScanResult(
+        product_name=base_product.product_name,
+        base_product=base_product,
+        profiles_audited=insights,
+        household_verdict=hh_verdict,
+        household_summary=hh_summary,
+        comparison_matrix=matrix
+    )

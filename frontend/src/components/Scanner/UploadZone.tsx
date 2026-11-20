@@ -4,19 +4,44 @@ import React, { useRef, useState } from 'react';
 import { UploadCloud, Camera } from 'lucide-react';
 
 import { reverseGeocodePincode } from '@/lib/api';
+import { useHealthProfile } from '@/context/HealthProfileContext';
+import { UserProfile } from '@/types';
 
 interface UploadZoneProps {
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: File, selectedProfiles?: UserProfile[]) => void;
   onOpenLiveCamera?: () => void;
-  onTextSubmit?: (query: string, pincode?: string) => void;
+  onTextSubmit?: (query: string, pincode?: string, selectedProfiles?: UserProfile[]) => void;
   loading: boolean;
   compact?: boolean;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLiveCamera, onTextSubmit, loading, compact }) => {
+  const { profiles } = useHealthProfile();
   const [isDragOver, setIsDragOver] = useState(false);
   const [textQuery, setTextQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Household multi-profile opt-in state (max 3)
+  const [isMultiProfile, setIsMultiProfile] = useState(false);
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => profiles.slice(0, 3).map(p => p.id!));
+
+  const toggleProfileSelect = (id: string) => {
+    if (selectedProfileIds.includes(id)) {
+      if (selectedProfileIds.length > 1) {
+        setSelectedProfileIds(selectedProfileIds.filter(x => x !== id));
+      }
+    } else {
+      if (selectedProfileIds.length < 3) {
+        setSelectedProfileIds([...selectedProfileIds, id]);
+      }
+    }
+  };
+
+  const getEffectiveProfiles = (): UserProfile[] | undefined => {
+    if (!isMultiProfile) return undefined;
+    const selected = profiles.filter(p => selectedProfileIds.includes(p.id!)).slice(0, 3);
+    return selected.length > 1 ? selected : undefined;
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -30,13 +55,13 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
     e.stopPropagation();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      onFileSelect(e.dataTransfer.files[0]);
+      onFileSelect(e.dataTransfer.files[0], getEffectiveProfiles());
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      onFileSelect(e.target.files[0]);
+      onFileSelect(e.target.files[0], getEffectiveProfiles());
     }
   };
 
@@ -174,18 +199,65 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (textQuery.trim() && onTextSubmit) {
-      onTextSubmit(textQuery.trim(), pincode.trim() || '110001');
+      onTextSubmit(textQuery.trim(), pincode.trim() || '110001', getEffectiveProfiles());
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Product Name / Quick-Commerce Link Search Box */}
+      {/* Household Multi-Profile Audit Opt-In Toggle */}
+      {!compact && profiles.length > 1 && (
+        <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-md">
+          <div className="flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-900">
+              <input
+                type="checkbox"
+                checked={isMultiProfile}
+                onChange={(e) => setIsMultiProfile(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-zinc-300 text-zinc-900 focus:ring-0 cursor-pointer"
+              />
+              <span>Household Multi-Profile Audit (Max 3 Profiles)</span>
+            </label>
+            <span className="text-[10px] text-zinc-500 font-mono">
+              Audits for multiple family members in 1 call
+            </span>
+          </div>
+
+          {isMultiProfile && (
+            <div className="mt-2.5 pt-2 border-t border-zinc-200 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-zinc-600 font-medium mr-1">Select members:</span>
+              {profiles.slice(0, 5).map((p) => {
+                const isChecked = selectedProfileIds.includes(p.id!);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => toggleProfileSelect(p.id!)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors flex items-center gap-1 ${
+                      isChecked
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-white text-zinc-600 border-zinc-200 hover:border-zinc-300'
+                    }`}
+                  >
+                    <span>{isChecked ? '✓' : '+'}</span>
+                    <span>{p.name || 'Member'}</span>
+                  </button>
+                );
+              })}
+              <span className="text-[10px] text-zinc-400 font-mono ml-auto">
+                {selectedProfileIds.length}/3 selected
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Product Name Search Box */}
       {onTextSubmit && (
         <form onSubmit={handleSearchSubmit} className="p-4 bg-zinc-50 border border-zinc-200 rounded-md">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1">
             <label className="text-xs font-semibold text-zinc-900 block">
-              Search by Product Name or Quick-Commerce Link
+              Search by Food Product Name
             </label>
             <div className="flex items-center gap-1.5 text-xs text-zinc-600">
               <span className="text-[11px] font-mono">Delivery PIN:</span>
@@ -210,12 +282,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
             </div>
           </div>
           <p className="text-[11px] text-zinc-500 mb-2">
-            No photo? Enter product name or paste Blinkit / Zepto URL to auto-fetch ingredients and verify clean swaps available at your pincode.
+            No packaging photo handy? Enter any packaged food brand or item name to audit its authentic ingredients and find clean swaps.
           </p>
           <div className="flex gap-2">
             <input
               type="text"
-              placeholder="e.g. Bournvita, Maggi Atta Noodles, Epigamia Greek Yogurt, or paste link"
+              placeholder="e.g. Bournvita, Maggi Atta Noodles, Epigamia Greek Yogurt, Haldiram Aloo Bhujia"
               value={textQuery}
               onChange={(e) => setTextQuery(e.target.value)}
               disabled={loading}

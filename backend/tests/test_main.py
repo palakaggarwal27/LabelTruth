@@ -459,23 +459,18 @@ def test_is_waf_block_content():
     assert is_waf_block_content(clean_html) is False
 
 @pytest.mark.anyio
-async def test_cart_agent_browser_url_extraction():
-    """Verify TinyFish browser agent extracts cart items from URL parameters and product slugs"""
-    from app.services.tinyfish_service import tinyfish_service
+async def test_cart_url_and_bop_extraction():
+    """Verify TinyFish extracts product title and packaging from quick-commerce URLs without browser agent"""
+    from app.services.tinyfish_service import tinyfish_service, extract_product_name_from_url
 
-    # 1. Test URL with query parameters
-    cart_url = "https://www.zepto.com/cart?items=Oreo-Biscuits,Haldirams-Aloo-Bhujia"
-    res = await tinyfish_service.extract_cart_items_via_agent_browser(cart_url, pincode="110001")
-    assert res["store_name"] == "Zepto"
-    assert len(res["items"]) >= 2
-    names = [it["product_name"] for it in res["items"]]
-    assert any("Oreo" in n for n in names)
-    assert any("Bhujia" in n for n in names)
+    # 1. Test quick-commerce URL slug extraction
+    zepto_url = "https://www.zepto.com/pn/amul-salted-butter-500g/pvid/12345"
+    extracted_slug = extract_product_name_from_url(zepto_url)
+    assert "Amul Salted Butter" in extracted_slug
 
-    # 2. Test direct product page URL
+    # 2. Test search_and_fetch_bop_by_url
     prod_url = "https://blinkit.com/prn/haldirams-nagpur-bhujia-sev/prid/98765"
-    res_prod = await tinyfish_service.extract_cart_items_via_agent_browser(prod_url, pincode="560001")
-    assert res_prod["store_name"] == "Blinkit"
-    assert len(res_prod["items"]) >= 1
-    assert "Bhujia" in res_prod["items"][0]["product_name"]
+    title, bop = await tinyfish_service.search_and_fetch_bop_by_url(prod_url)
+    assert title is not None
+    assert "Bhujia" in title
 

@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
 import { HealthierAlternative } from '@/types';
-import { Sparkles, ExternalLink, MapPin } from 'lucide-react';
+import { Sparkles, ExternalLink, MapPin, RefreshCw } from 'lucide-react';
 import { buildStoreOptions } from '@/utils/affiliate';
 
 interface AlternativeCardProps {
   alternative: HealthierAlternative;
   cleanAlternatives?: HealthierAlternative[];
+  isLoadingAlternatives?: boolean;
 }
 
-export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, cleanAlternatives }) => {
+export const AlternativeCard: React.FC<AlternativeCardProps> = ({ 
+  alternative, 
+  cleanAlternatives, 
+  isLoadingAlternatives = false 
+}) => {
   const [userCity, setUserCity] = useState('');
   const allAlternatives = cleanAlternatives && cleanAlternatives.length > 0 
     ? cleanAlternatives 
@@ -20,6 +25,12 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, c
         <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-emerald-800">
           <Sparkles className="w-4 h-4 text-emerald-600" />
           <span className="font-semibold">Clean Whole-Food Alternatives</span>
+          {isLoadingAlternatives && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Auditing live packaging...
+            </span>
+          )}
         </div>
 
         {/* Location / City Pincode filter */}
@@ -34,6 +45,13 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({ alternative, c
           />
         </div>
       </div>
+
+      {isLoadingAlternatives && (!allAlternatives || allAlternatives.length === 0) && (
+        <div className="p-4 bg-emerald-50/60 border border-dashed border-emerald-200 rounded-md flex items-center gap-2.5 text-xs text-emerald-800 animate-pulse">
+          <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
+          <span>Searching verified cleaner Indian brand alternatives from authentic packaging via web...</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {allAlternatives.map((alt, idx) => {
