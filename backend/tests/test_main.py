@@ -326,6 +326,10 @@ def test_demo_mode_5_tiers():
 
 def test_decoupled_profile_safety_reevaluation():
     """Verify /api/evaluate-profile-safety re-evaluates base product against Dad profile in <50ms"""
+    from app.data.demo_suite import DEMO_TIER_PRODUCTS
+    from app.main import BASE_PRODUCT_CACHE
+    from app.schemas.analysis import LabelAnalysisResult
+    BASE_PRODUCT_CACHE["mock_hash_chips"] = LabelAnalysisResult(**DEMO_TIER_PRODUCTS["very_low"])
     payload = {
         "product_hash": "mock_hash_chips",
         "active_profile": {

@@ -12,7 +12,7 @@ import { IngredientAccordion } from '@/components/Results/IngredientAccordion';
 import { AlternativeCard } from '@/components/Results/AlternativeCard';
 import { FloatingChatbot } from '@/components/FloatingChatbot';
 import { useHealthProfile } from '@/context/HealthProfileContext';
-import { smartScan, discoverAlternatives, evaluateProfileSafety, smartScanMultiProfile } from '@/lib/api';
+import { smartScan, discoverAlternatives, evaluateProfileSafety, smartScanMultiProfile, resetBackendCache } from '@/lib/api';
 import { LabelAnalysisResult, ScannedHistoryItem, UserProfile, MultiProfileScanResult } from '@/types';
 import { AlertCircle, RefreshCw, ScanLine, History, Trash2, Scale, ShoppingCart, Users, ShieldAlert, HeartPulse, CheckCircle2, ChevronRight } from 'lucide-react';
 import { ScanHistoryList } from '@/components/Scanner/ScanHistoryList';
@@ -65,7 +65,7 @@ export default function ScanPage() {
 
   // Instant Profile Re-evaluation when family profile is switched
   React.useEffect(() => {
-    if (result && currentProfile) {
+    if (result && currentProfile && !multiProfileResult) {
       // Re-evaluate active result against active member in <50ms without re-running OCR
       evaluateProfileSafety(result.product_name, currentProfile, result)
         .then((evalData) => {
@@ -149,6 +149,7 @@ export default function ScanPage() {
 
   const clearHistory = () => {
     setHistory([]);
+    resetBackendCache();
     try {
       localStorage.removeItem(SCAN_HISTORY_KEY);
     } catch (e) {
@@ -245,22 +246,22 @@ export default function ScanPage() {
 
     setMultiProfileResult(null);
 
-    // 2. Check offline demo suite if demo mode is enabled or product query matches a demo tier (never for live URLs)
-    if (!isUrl && (demoMode || LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS])) {
+    // 2. Check offline demo suite if demo mode is enabled (never for live URLs)
+    if (!isUrl && demoMode) {
       let matchedKey: string | null = null;
 
       // Exact tier key match first
       if (LOCAL_DEMO_TIER_PRODUCTS[queryText as keyof typeof LOCAL_DEMO_TIER_PRODUCTS]) {
         matchedKey = queryText;
-      } else if (normalized.includes('lays') || normalized.includes('lay') || normalized.includes('chip') || normalized.includes('18')) {
+      } else if (normalized.includes('lays') || normalized.includes('lay')) {
         matchedKey = 'very_low';
-      } else if (normalized.includes('english') || normalized.includes('bread') || normalized.includes('38')) {
+      } else if (normalized.includes('english oven') || normalized.includes('white bread')) {
         matchedKey = 'low';
-      } else if (normalized.includes('dlecta') || normalized.includes("d'lecta") || normalized.includes('cheese') || normalized.includes('mozzarella') || normalized.includes('74')) {
+      } else if (normalized.includes('dlecta') || normalized.includes("d'lecta")) {
         matchedKey = 'moderate';
-      } else if (normalized.includes('epigamia') || normalized.includes('yogurt') || normalized.includes('greek') || normalized.includes('78')) {
+      } else if (normalized.includes('epigamia')) {
         matchedKey = 'high';
-      } else if (normalized.includes('oat') || normalized.includes('oats') || normalized.includes('95')) {
+      } else if (normalized.includes('rolled oats') || normalized.includes('true elements')) {
         matchedKey = 'very_high';
       }
 
@@ -664,9 +665,7 @@ export default function ScanPage() {
               healthScore={
                 activeInsight
                   ? activeInsight.health_score
-                  : multiProfileResult
-                  ? Math.min(...multiProfileResult.profiles_audited.map((p) => p.health_score))
-                  : result.health_score
+                  : (result.base_health_score ?? result.health_score)
               }
               verdict={
                 activeInsight

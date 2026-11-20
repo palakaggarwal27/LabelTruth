@@ -3,10 +3,10 @@ import json
 import logging
 import re
 import asyncio
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config import PORT, HOST
 from app.schemas.analysis import LabelAnalysisResult, HealthierAlternative
@@ -160,6 +160,9 @@ def find_in_base_cache(
         if img_hash in BASE_PRODUCT_CACHE:
             return BASE_PRODUCT_CACHE[img_hash]
     if query_text:
+        clean_q = query_text.strip().lower()
+        if clean_q in BASE_PRODUCT_CACHE:
+            return BASE_PRODUCT_CACHE[clean_q]
         nk = normalize_name_key(query_text)
         if nk and nk in BASE_PRODUCT_CACHE:
             return BASE_PRODUCT_CACHE[nk]
@@ -171,8 +174,10 @@ def find_in_base_cache(
 class EvaluateProfileSafetyRequest(BaseModel):
     product_hash: Optional[str] = None
     product_name: Optional[str] = None
-    base_product: Optional[LabelAnalysisResult] = None
+    base_product: Optional[Any] = None
     active_profile: UserProfile
+
+EvaluateProfileSafetyRequest.model_rebuild()
 
 @app.post('/api/evaluate-profile-safety')
 async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest):
@@ -183,13 +188,37 @@ async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest
     """
     prof = payload.active_profile
     prof_sig = f"{prof.id or prof.name or 'default'}_{'_'.join(sorted(prof.medical_conditions or []))}_{'_'.join(sorted(prof.allergies or []))}_{'_'.join(sorted(prof.custom_avoid_list or []))}"
-    p_key = payload.product_name or payload.product_hash or (payload.base_product.product_name if payload.base_product else "")
+    p_key = payload.product_name or payload.product_hash or ""
+    if not p_key and isinstance(payload.base_product, dict):
+        p_key = payload.base_product.get("product_name", "")
+    elif not p_key and hasattr(payload.base_product, "product_name"):
+        p_key = payload.base_product.product_name
+
     safety_key = f"safety:{p_key}:{prof_sig}"
 
     if safety_key in SAFETY_CACHE:
         return SAFETY_CACHE[safety_key]
 
-    base_product = payload.base_product
+    base_product = None
+    if payload.base_product:
+        if isinstance(payload.base_product, LabelAnalysisResult):
+            base_product = payload.base_product
+        elif isinstance(payload.base_product, dict):
+            try:
+                base_product = LabelAnalysisResult.model_validate(payload.base_product)
+            except Exception:
+                try:
+                    from app.schemas.analysis import HealthierAlternative
+                    raw_dict = dict(payload.base_product)
+                    if not raw_dict.get("healthier_alternative"):
+                        raw_dict["healthier_alternative"] = {
+                            "name": "Clean Alternative",
+                            "key_benefit": "Whole food"
+                        }
+                    base_product = LabelAnalysisResult.model_validate(raw_dict)
+                except Exception:
+                    pass
+
     if not base_product:
         base_product = find_in_base_cache(query_text=payload.product_name or payload.product_hash)
 
@@ -197,8 +226,13 @@ async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest
         base_product = BASE_PRODUCT_CACHE.get(payload.product_hash)
 
     if not base_product:
-        # Default fallback to first demo product if not found
-        base_product = LabelAnalysisResult(**DEMO_TIER_PRODUCTS["moderate"])
+        raise HTTPException(
+            status_code=404,
+            detail=f"Base packaging data for '{p_key or 'product'}' not found in active session. Please scan the label directly."
+        )
+
+    # Cache base_product for future lookups
+    store_product_in_cache(base_product, query_text=base_product.product_name)
 
     eval_result = evaluate_profile_safety_offline(base_product, prof)
     SAFETY_CACHE[safety_key] = eval_result
@@ -215,6 +249,13 @@ def get_survey_and_fssai_stats():
 @app.get('/api/presets')
 def get_demo_presets():
     return PRESET_PRODUCTS
+
+@app.post('/api/reset-cache')
+def reset_cache_endpoint():
+    BASE_PRODUCT_CACHE.clear()
+    AUDIT_CACHE.clear()
+    SAFETY_CACHE.clear()
+    return {"status": "cleared", "message": "All session scan and safety caches cleared."}
 
 @app.post('/api/validate-condition', response_model=ValidateConditionResponse)
 async def validate_condition(payload: ValidateConditionRequest):
@@ -322,24 +363,23 @@ async def smart_scan(
     # Never apply demo sandbox to live URLs
     if demo_mode and not is_url_input:
         q_lower = (query or "").lower()
-        if any(w in q_lower for w in ["chip", "lays", "bingo", "masala", "18"]):
+        tier_key = None
+        if any(w in q_lower for w in ["lays", "bingo", "18"]):
             tier_key = "very_low"
-        elif any(w in q_lower for w in ["bread", "brown bread", "atta bread", "38"]):
+        elif any(w in q_lower for w in ["english oven", "38"]):
             tier_key = "low"
-        elif any(w in q_lower for w in ["mozzarella", "cheese", "d'lecta", "58"]):
+        elif any(w in q_lower for w in ["d'lecta", "dlecta", "58"]):
             tier_key = "moderate"
-        elif any(w in q_lower for w in ["yogurt", "greek yogurt", "epigamia", "dahi", "78"]):
+        elif any(w in q_lower for w in ["epigamia", "78"]):
             tier_key = "high"
-        elif any(w in q_lower for w in ["oat", "rolled oats", "steel cut", "95"]):
+        elif any(w in q_lower for w in ["rolled oats", "steel cut", "95"]):
             tier_key = "very_high"
-        else:
-            tier_key = "moderate"
         
-        demo_res = LabelAnalysisResult(**DEMO_TIER_PRODUCTS[tier_key])
-        # Run decoupled profile evaluation on demo item
-        eval_res = evaluate_profile_safety_offline(demo_res, profile)
-        demo_res.personalized_verdict = eval_res["personalized_verdict"]
-        return demo_res
+        if tier_key and tier_key in DEMO_TIER_PRODUCTS:
+            demo_res = LabelAnalysisResult(**DEMO_TIER_PRODUCTS[tier_key])
+            eval_res = evaluate_profile_safety_offline(demo_res, profile)
+            demo_res.personalized_verdict = eval_res["personalized_verdict"]
+            return demo_res
 
 
     try:
@@ -538,13 +578,13 @@ async def smart_scan_multi_profile(
     # 2. Run Gemini Multi-Profile Simultaneous Evaluation with separate prompt evaluation
     multi_result = None
     if image_bytes:
-        if gemini_vision_service.client or GEMINI_API_KEYS:
+        if cached_base:
+            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
+        elif gemini_vision_service.client or GEMINI_API_KEYS:
             multi_result = await gemini_vision_service.analyze_multi_profile_image(
                 image_bytes=image_bytes,
                 profiles=user_profiles
             )
-        elif cached_base:
-            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
         else:
             base_prod = await smart_scan(
                 query=query,
@@ -561,8 +601,7 @@ async def smart_scan_multi_profile(
         effective_product_name = clean_query
 
         if cached_base:
-            effective_product_name = cached_base.product_name
-            online_content = f"Product: {cached_base.product_name}\nIngredients: {', '.join([i.ingredient for i in cached_base.ingredient_breakdown or []])}\nNutrition: {cached_base.nutrition_card.model_dump_json() if cached_base.nutrition_card else ''}"
+            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
         elif clean_query.startswith("http://") or clean_query.startswith("https://"):
             url_title, bop_content = await tinyfish_service.search_and_fetch_bop_by_url(clean_query)
             if not url_title or any(inv in url_title.lower() for inv in ["not found", "404", "error", "item unavailable"]):
@@ -572,28 +611,38 @@ async def smart_scan_multi_profile(
                 )
             effective_product_name = url_title
             online_content = bop_content or ""
+            if gemini_vision_service.client or GEMINI_API_KEYS:
+                multi_result = await gemini_vision_service.analyze_multi_profile_text_query(
+                    query=effective_product_name,
+                    profiles=user_profiles,
+                    online_content=online_content
+                )
+            else:
+                base_prod = await smart_scan(
+                    query=effective_product_name,
+                    image=None,
+                    pincode=delivery_pincode,
+                    demo_mode=demo_mode,
+                    user_profile=UserProfile().model_dump_json()
+                )
+                multi_result = create_multi_profile_result_offline(base_prod, user_profiles)
         else:
             online_content = await tinyfish_service.search_and_fetch_bop(clean_query) or ""
-
-        if gemini_vision_service.client or GEMINI_API_KEYS:
-            multi_result = await gemini_vision_service.analyze_multi_profile_text_query(
-                query=effective_product_name,
-                profiles=user_profiles,
-                online_content=online_content
-            )
-            if cached_base and multi_result:
-                multi_result.base_product = cached_base
-        elif cached_base:
-            multi_result = create_multi_profile_result_offline(cached_base, user_profiles)
-        else:
-            base_prod = await smart_scan(
-                query=query,
-                image=image,
-                pincode=delivery_pincode,
-                demo_mode=demo_mode,
-                user_profile=UserProfile().model_dump_json()
-            )
-            multi_result = create_multi_profile_result_offline(base_prod, user_profiles)
+            if gemini_vision_service.client or GEMINI_API_KEYS:
+                multi_result = await gemini_vision_service.analyze_multi_profile_text_query(
+                    query=effective_product_name,
+                    profiles=user_profiles,
+                    online_content=online_content
+                )
+            else:
+                base_prod = await smart_scan(
+                    query=query,
+                    image=image,
+                    pincode=delivery_pincode,
+                    demo_mode=demo_mode,
+                    user_profile=UserProfile().model_dump_json()
+                )
+                multi_result = create_multi_profile_result_offline(base_prod, user_profiles)
     else:
         raise HTTPException(status_code=400, detail="Please provide either a product label photo, product name, or quick-commerce link.")
 

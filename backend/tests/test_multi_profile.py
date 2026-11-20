@@ -105,13 +105,14 @@ def test_multi_profile_scan_success(mock_product, household_profiles):
     assert data["household_verdict"] == "UNSAFE FOR FAMILY MEMBERS"
     assert "Dad" in data["household_summary"] or "Kid" in data["household_summary"]
 
-def test_multi_profile_max_limit_enforced():
+def test_multi_profile_max_limit_enforced(mock_product):
+    BASE_PRODUCT_CACHE[normalize_name_key(mock_product.product_name)] = mock_product
     four_profiles = [
         {"id": f"p{i}", "name": f"Member {i}", "dietary_preferences": [], "medical_conditions": [], "allergies": [], "custom_avoid_list": []}
         for i in range(4)
     ]
     payload = {
-        "query": "Rolled Oats",
+        "query": mock_product.product_name,
         "profiles": json.dumps(four_profiles),
         "pincode": "110001"
     }
