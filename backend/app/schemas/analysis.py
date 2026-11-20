@@ -124,6 +124,7 @@ class LabelAnalysisResult(BaseModel):
     nutrient_integrity: Optional[NutrientIntegrityMatrix] = Field(default_factory=NutrientIntegrityMatrix, description='Protein bioavailability and full nutrient integrity matrix')
     allergy_trigger: Optional[str] = Field(default=None, description='Allergen causing score to be rated 0')
     base_score_without_allergy: Optional[int] = Field(default=None, description='Base nutritional score if not for allergy')
+    candidate_alternative_names: List[str] = Field(default_factory=list, description='Candidate clean alternative names to be verified in background')
     is_food_label: bool = Field(default=True, description='False if image is not a food product or label')
     label_type: Literal['FRONT_OF_PACK', 'BACK_OF_PACK', 'FULL_PANEL', 'NOT_A_LABEL'] = Field(default='FULL_PANEL')
 

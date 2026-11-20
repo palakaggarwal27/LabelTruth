@@ -163,12 +163,20 @@ export default function ScanPage() {
         : '110001';
       const effectivePin = pin || savedPin;
 
+      // Extract candidate names from initial scan if available to eliminate Gemini prompt latency
+      const candidateNames = productData.candidate_alternative_names && productData.candidate_alternative_names.length > 0
+        ? productData.candidate_alternative_names
+        : (productData.clean_alternatives || [])
+            .map(a => a.name || a.product_name)
+            .filter((name): name is string => typeof name === 'string' && name.trim().length > 0 && !name.toLowerCase().includes('top tier') && !name.toLowerCase().includes('current product'));
+
       discoverAlternatives(
         productData.product_name,
         productData.health_score,
         productData.category || '',
         effectivePin,
-        currentProfile
+        currentProfile,
+        candidateNames
       )
         .then((alts) => {
           if (alts && alts.length > 0) {

@@ -42,9 +42,9 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
           <Sparkles className="w-4 h-4 text-emerald-600" />
           <span className="font-semibold">Clean Whole-Food Alternatives</span>
           {isLoadingAlternatives && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              Auditing live packaging...
+            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
+              Auditing packaging via TinyFish & Gemini...
             </span>
           )}
         </div>
@@ -63,9 +63,14 @@ export const AlternativeCard: React.FC<AlternativeCardProps> = ({
       </div>
 
       {isLoadingAlternatives && allAlternatives.length === 0 && (
-        <div className="p-4 bg-emerald-50/60 border border-dashed border-emerald-200 rounded-md flex items-center gap-2.5 text-xs text-emerald-800 animate-pulse">
+        <div className="p-4 bg-emerald-50/60 border border-dashed border-emerald-200 rounded-md flex items-center gap-3 text-xs text-emerald-800">
           <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
-          <span>Searching verified cleaner Indian brand alternatives from authentic packaging via web...</span>
+          <div>
+            <div className="font-semibold text-emerald-950">Auditing Clean Alternatives in Background</div>
+            <div className="text-[11px] text-emerald-700 font-light mt-0.5">
+              TinyFish is retrieving authentic packaging & ingredients while Gemini audits clinical health scores. Your main product audit is complete and ready above.
+            </div>
+          </div>
         </div>
       )}
 

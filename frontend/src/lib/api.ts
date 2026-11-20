@@ -197,7 +197,8 @@ export const discoverAlternatives = async (
   currentHealthScore: number,
   category: string = '',
   pincode: string = '110001',
-  userProfile?: UserProfile
+  userProfile?: UserProfile,
+  candidateNames?: string[]
 ): Promise<HealthierAlternative[]> => {
   try {
     const res = await apiClient.post<HealthierAlternative[]>('/api/discover-alternatives', {
@@ -206,6 +207,7 @@ export const discoverAlternatives = async (
       current_health_score: currentHealthScore,
       pincode,
       user_profile: userProfile,
+      candidate_names: candidateNames || [],
     });
     return res.data;
   } catch (err) {

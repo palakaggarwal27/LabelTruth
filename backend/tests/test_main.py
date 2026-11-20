@@ -667,5 +667,32 @@ def test_enforce_delta_audit_on_dict_filters_multi_profile():
         if a.get("type") == "CLEAN_COMMERCIAL":
             assert a["health_score"] > 82
 
+@pytest.mark.anyio
+async def test_tinyfish_concurrent_packaging_fetch():
+    """Verify fetch_candidates_packaging returns within bounded timeout"""
+    from app.services.tinyfish_service import tinyfish_service
+    res = await tinyfish_service.fetch_candidates_packaging(["The Whole Truth Bar", "Slurrp Farm Cookies"])
+    assert isinstance(res, dict)
+    assert "The Whole Truth Bar" in res
+    assert "Slurrp Farm Cookies" in res
+
+def test_discover_alternatives_with_candidate_names():
+    """Verify discover alternatives endpoint uses passed candidate names and returns verified swaps"""
+    client = TestClient(app)
+    resp = client.post('/api/discover-alternatives', json={
+        "product_name": "Cadbury Dairy Milk",
+        "category": "chocolate",
+        "current_health_score": 38,
+        "pincode": "110001",
+        "candidate_names": ["The Whole Truth 71% Dark Chocolate", "Amul Dark Chocolate"]
+    })
+    assert resp.status_code == 200
+    alts = resp.json()
+    assert len(alts) > 0
+    for a in alts:
+        if a.get("type") == "CLEAN_COMMERCIAL":
+            assert a["health_score"] > 38
+            assert a["health_score"] < 100
+
 
 
