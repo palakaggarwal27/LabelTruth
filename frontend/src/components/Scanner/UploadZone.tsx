@@ -16,30 +16,67 @@ interface UploadZoneProps {
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLiveCamera, onTextSubmit, loading, compact }) => {
-  const { profiles } = useHealthProfile();
+  const { profiles, setIsModalOpen } = useHealthProfile();
   const [isDragOver, setIsDragOver] = useState(false);
   const [textQuery, setTextQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Household multi-profile opt-in state (max 3)
   const [isMultiProfile, setIsMultiProfile] = useState(false);
-  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => profiles.slice(0, 3).map(p => p.id!));
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+
+  // Always keep selectedProfileIds synchronized with live profiles from context/localStorage
+  React.useEffect(() => {
+    if (!profiles || profiles.length === 0) return;
+    const availableIds = profiles.map(p => p.id).filter((id): id is string => Boolean(id));
+
+    setSelectedProfileIds(prev => {
+      const valid = prev.filter(id => availableIds.includes(id));
+      if (valid.length === 0) {
+        return availableIds.slice(0, 3);
+      }
+      return valid.slice(0, 3);
+    });
+  }, [profiles]);
+
+  const handleToggleMultiProfile = (enabled: boolean) => {
+    setIsMultiProfile(enabled);
+    if (enabled) {
+      const availableIds = profiles.map(p => p.id).filter((id): id is string => Boolean(id));
+      setSelectedProfileIds(prev => {
+        const valid = prev.filter(id => availableIds.includes(id));
+        if (valid.length < 2) {
+          return availableIds.slice(0, 3);
+        }
+        return valid.slice(0, 3);
+      });
+    }
+  };
 
   const toggleProfileSelect = (id: string) => {
-    if (selectedProfileIds.includes(id)) {
-      if (selectedProfileIds.length > 1) {
-        setSelectedProfileIds(selectedProfileIds.filter(x => x !== id));
+    const availableIds = profiles.map(p => p.id).filter((pid): pid is string => Boolean(pid));
+
+    setSelectedProfileIds(prev => {
+      const currentValid = prev.filter(pid => availableIds.includes(pid));
+      if (currentValid.includes(id)) {
+        if (currentValid.length > 1) {
+          return currentValid.filter(x => x !== id);
+        }
+        return currentValid;
+      } else {
+        if (currentValid.length < 3) {
+          return [...currentValid, id];
+        } else {
+          // If already at 3, replace the 3rd profile so user is never locked out
+          return [...currentValid.slice(0, 2), id];
+        }
       }
-    } else {
-      if (selectedProfileIds.length < 3) {
-        setSelectedProfileIds([...selectedProfileIds, id]);
-      }
-    }
+    });
   };
 
   const getEffectiveProfiles = (): UserProfile[] | undefined => {
     if (!isMultiProfile) return undefined;
-    const selected = profiles.filter(p => selectedProfileIds.includes(p.id!)).slice(0, 3);
+    const selected = profiles.filter(p => p.id && selectedProfileIds.includes(p.id)).slice(0, 3);
     return selected.length > 1 ? selected : undefined;
   };
 
@@ -206,14 +243,14 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
   return (
     <div className="space-y-4">
       {/* Household Multi-Profile Audit Opt-In Toggle */}
-      {!compact && profiles.length > 1 && (
+      {!compact && profiles.length > 0 && (
         <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-md">
           <div className="flex items-center justify-between gap-2">
             <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-zinc-900">
               <input
                 type="checkbox"
                 checked={isMultiProfile}
-                onChange={(e) => setIsMultiProfile(e.target.checked)}
+                onChange={(e) => handleToggleMultiProfile(e.target.checked)}
                 className="w-3.5 h-3.5 rounded border-zinc-300 text-zinc-900 focus:ring-0 cursor-pointer"
               />
               <span>Household Multi-Profile Audit (Max 3 Profiles)</span>
@@ -227,12 +264,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
             <div className="mt-2.5 pt-2 border-t border-zinc-200 flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] text-zinc-600 font-medium mr-1">Select members:</span>
               {profiles.slice(0, 5).map((p) => {
-                const isChecked = selectedProfileIds.includes(p.id!);
+                const isChecked = Boolean(p.id && selectedProfileIds.includes(p.id));
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => toggleProfileSelect(p.id!)}
+                    onClick={() => p.id && toggleProfileSelect(p.id)}
                     className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors flex items-center gap-1 ${
                       isChecked
                         ? 'bg-zinc-900 text-white border-zinc-900'
@@ -244,8 +281,22 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onFileSelect, onOpenLive
                   </button>
                 );
               })}
-              <span className="text-[10px] text-zinc-400 font-mono ml-auto">
-                {selectedProfileIds.length}/3 selected
+
+              {profiles.length < 3 && (
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(true)}
+                  className="px-2 py-0.5 rounded text-[11px] font-medium border border-dashed border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 transition-colors flex items-center gap-1"
+                  title="Add a family member profile"
+                >
+                  <span>+</span>
+                  <span>Add Member</span>
+                </button>
+              )}
+
+              <span className="text-[10px] text-zinc-500 font-mono ml-auto">
+                {selectedProfileIds.filter((id) => profiles.some((p) => p.id === id)).length}/
+                {Math.min(3, Math.max(1, profiles.length))} selected
               </span>
             </div>
           )}
