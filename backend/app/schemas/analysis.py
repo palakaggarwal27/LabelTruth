@@ -65,6 +65,7 @@ class NutritionCardAnalysis(BaseModel):
 class LabelAnalysisResult(BaseModel):
     product_name: str = Field(description='Identified brand and product title')
     health_score: int = Field(ge=0, le=100, description='Overall health score from 0 (ultra-processed/toxic) to 100 (wholesome/clean)')
+    base_health_score: Optional[int] = Field(default=None, description='Objective baseline food score')
     personalized_verdict: Literal['SAFE FOR YOU', 'CAUTION', 'AVOID (VIOLATES PROFILE)'] = Field(description='Personalized safety verdict')
     simple_summary: str = Field(description='Clear 2-3 sentence layperson summary of the reality of this food')
     deceptive_claims_flagged: List[str] = Field(default_factory=list, description='Front-of-pack claims that deceive or contradict back-of-pack realities')

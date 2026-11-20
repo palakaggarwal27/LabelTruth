@@ -89,18 +89,27 @@ def store_product_in_cache(
 
     img_hash = compute_product_base_hash(image_bytes) if image_bytes else None
 
-    # 1. Base product cache
+    # 1. Base product cache (store pure un-penalized food facts)
+    clean_base = base_product.model_copy(deep=True)
+    if getattr(clean_base, "base_health_score", None) is not None:
+        clean_base.health_score = clean_base.base_health_score
+    else:
+        clean_base.base_health_score = clean_base.health_score
+    clean_base.personalized_verdict = "SAFE FOR YOU" if clean_base.health_score >= 70 else "CAUTION"
+    for ing in clean_base.ingredient_breakdown or []:
+        ing.personalized_warning = ""
+
     if img_hash:
-        BASE_PRODUCT_CACHE[img_hash] = base_product
+        BASE_PRODUCT_CACHE[img_hash] = clean_base
     for nk in name_keys:
         if nk:
-            BASE_PRODUCT_CACHE[nk] = base_product
+            BASE_PRODUCT_CACHE[nk] = clean_base
             nh = hashlib.sha256(nk.encode('utf-8')).hexdigest()
-            BASE_PRODUCT_CACHE[nh] = base_product
+            BASE_PRODUCT_CACHE[nh] = clean_base
 
     # 2. Profile audit cache (if profile provided)
     if profile:
-        pid = profile.id or "default"
+        pid = profile.id or profile.name or "default"
         if img_hash:
             AUDIT_CACHE[f"img:{img_hash}:{pid}"] = (now, res_to_store)
         for nk in name_keys:
@@ -115,7 +124,7 @@ def find_in_audit_cache(
     profile: Optional[UserProfile] = None
 ) -> Optional[LabelAnalysisResult]:
     now = time.time()
-    pid = profile.id or "default" if profile else "default"
+    pid = (profile.id or profile.name or "default") if profile else "default"
 
     if image_bytes:
         img_hash = compute_product_base_hash(image_bytes)
@@ -173,9 +182,9 @@ async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest
     without re-running OCR or web scraping.
     """
     prof = payload.active_profile
-    prof_id = prof.id or "default"
+    prof_sig = f"{prof.id or prof.name or 'default'}_{'_'.join(sorted(prof.medical_conditions or []))}_{'_'.join(sorted(prof.allergies or []))}_{'_'.join(sorted(prof.custom_avoid_list or []))}"
     p_key = payload.product_name or payload.product_hash or (payload.base_product.product_name if payload.base_product else "")
-    safety_key = f"safety:{p_key}:{prof_id}"
+    safety_key = f"safety:{p_key}:{prof_sig}"
 
     if safety_key in SAFETY_CACHE:
         return SAFETY_CACHE[safety_key]
@@ -474,23 +483,33 @@ async def smart_scan_multi_profile(
     # 1. Check if base product exists in dual-key cache
     base_product = find_in_base_cache(image_bytes=image_bytes, query_text=query)
 
-    # 2. If not cached, run smart scan once with primary profile
+    # 2. If not cached, run smart scan once with neutral profile to get un-penalized base food facts
     if not base_product:
         base_product = await smart_scan(
             query=query,
             image=image,
             pincode=delivery_pincode,
             demo_mode=demo_mode,
-            user_profile=user_profiles[0].model_dump_json()
+            user_profile=UserProfile().model_dump_json()
         )
 
-    # 3. Create multi-profile evaluation
-    multi_result = create_multi_profile_result_offline(base_product, user_profiles)
+    # Ensure clean un-penalized base facts for multi-profile evaluation
+    clean_base = base_product.model_copy(deep=True)
+    if getattr(clean_base, "base_health_score", None) is not None:
+        clean_base.health_score = clean_base.base_health_score
+    else:
+        clean_base.base_health_score = clean_base.health_score
+    clean_base.personalized_verdict = "SAFE FOR YOU" if clean_base.health_score >= 70 else "CAUTION"
+    for ing in clean_base.ingredient_breakdown or []:
+        ing.personalized_warning = ""
+
+    # 3. Create multi-profile evaluation from clean baseline
+    multi_result = create_multi_profile_result_offline(clean_base, user_profiles)
 
     # 4. Populate dual-key cache entries for all profiles audited
     for p in user_profiles:
-        ins = next((i for i in multi_result.profiles_audited if i.profile_id == p.id), None)
-        prof_res = base_product.model_copy(deep=True)
+        ins = next((i for i in multi_result.profiles_audited if i.profile_id == p.id or i.profile_name == p.name), None)
+        prof_res = clean_base.model_copy(deep=True)
         if ins:
             prof_res.health_score = ins.health_score
             prof_res.personalized_verdict = ins.personalized_verdict
@@ -498,9 +517,9 @@ async def smart_scan_multi_profile(
             prof_res.ingredient_breakdown = ins.ingredient_warnings
 
         store_product_in_cache(
-            base_product=base_product,
+            base_product=clean_base,
             image_bytes=image_bytes,
-            query_text=query or base_product.product_name,
+            query_text=query or clean_base.product_name,
             profile=p,
             profile_result=prof_res
         )

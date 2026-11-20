@@ -661,9 +661,31 @@ export default function ScanPage() {
             {/* Results components */}
             <ScoreCard
               productName={result.product_name}
-              healthScore={activeInsight ? activeInsight.health_score : result.health_score}
-              verdict={activeInsight ? activeInsight.personalized_verdict : result.personalized_verdict}
-              summary={activeInsight ? activeInsight.personalized_summary : result.simple_summary}
+              healthScore={
+                activeInsight
+                  ? activeInsight.health_score
+                  : multiProfileResult
+                  ? Math.min(...multiProfileResult.profiles_audited.map((p) => p.health_score))
+                  : result.health_score
+              }
+              verdict={
+                activeInsight
+                  ? activeInsight.personalized_verdict
+                  : multiProfileResult
+                  ? (multiProfileResult.household_verdict === 'SAFE FOR HOUSEHOLD'
+                      ? 'SAFE FOR YOU'
+                      : multiProfileResult.household_verdict === 'PARTIALLY SAFE (CAUTION)'
+                      ? 'CAUTION'
+                      : 'AVOID (VIOLATES PROFILE)')
+                  : result.personalized_verdict
+              }
+              summary={
+                activeInsight
+                  ? activeInsight.personalized_summary
+                  : multiProfileResult
+                  ? multiProfileResult.household_summary
+                  : result.simple_summary
+              }
             />
 
             <RedFlagsCard

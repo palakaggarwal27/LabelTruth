@@ -72,6 +72,7 @@ export interface NutritionCardAnalysis {
 export interface LabelAnalysisResult {
   product_name: string;
   health_score: number;
+  base_health_score?: number;
   personalized_verdict: PersonalizedVerdict;
   simple_summary: string;
   deceptive_claims_flagged: string[];

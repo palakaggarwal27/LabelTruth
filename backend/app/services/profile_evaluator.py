@@ -143,16 +143,17 @@ def evaluate_profile_safety_offline(
             has_severe_violation = True
 
     # Adjust health score dynamically based on profile penalties (capped at min 10)
-    orig_score = getattr(base_product, "health_score", 50)
+    orig_score = getattr(base_product, "base_health_score", None) or getattr(base_product, "health_score", 50)
     adjusted_score = max(10, orig_score - penalty_points) if penalty_points > 0 else orig_score
 
     # Calculate Verdict based on profile contraindications and overall nutritional integrity
-    if has_severe_violation or adjusted_score < 45:
+    if has_severe_violation:
         verdict = "AVOID (VIOLATES PROFILE)"
-    elif has_moderate_warning or adjusted_score < 70:
-        verdict = "CAUTION"
+    elif penalty_points > 0:
+        verdict = "AVOID (VIOLATES PROFILE)" if adjusted_score < 45 else "CAUTION"
     else:
-        verdict = "SAFE FOR YOU"
+        # Zero profile violations — verdict reflects food nutritional quality without falsely claiming profile violation
+        verdict = "SAFE FOR YOU" if adjusted_score >= 70 else "CAUTION"
 
     # Produce updated personalized warnings on ingredients
     updated_ingredients = []
@@ -171,6 +172,11 @@ def evaluate_profile_safety_offline(
         if warns:
             ing_dict["personalized_warning"] = " • ".join(warns)
             ing_dict["concern_level"] = "HIGH"
+        else:
+            ing_dict["personalized_warning"] = ""
+            if not any(bad in name_lower for bad in ["150d", "150c", "trans fat", "hydrogenated", "benzoate", "tartrazine", "102", "110", "palm oil", "palmolein"]):
+                if ing_dict.get("concern_level") == "HIGH":
+                    ing_dict["concern_level"] = "LOW"
         updated_ingredients.append(ing_dict)
 
     return {
@@ -188,7 +194,15 @@ def create_profile_insight_from_base(
     from app.schemas.multi_profile import ProfileAuditInsight
     from app.schemas.analysis import IngredientItem
     res = evaluate_profile_safety_offline(base_product, profile)
-    summary = res["contraindications"][0] if res["contraindications"] else "Safe for your dietary profile with no major clinical friction."
+    if res["contraindications"]:
+        summary = " • ".join(res["contraindications"][:2])
+    elif res["adjusted_health_score"] >= 70:
+        summary = "Safe for your dietary profile with no major clinical friction."
+    elif res["adjusted_health_score"] >= 45:
+        summary = "Moderate nutritional balance with no direct profile contraindications."
+    else:
+        summary = f"No direct profile conflicts, but product has low nutritional value (Score: {res['adjusted_health_score']}/100) — consume in moderation."
+
     return ProfileAuditInsight(
         profile_id=profile.id or "default",
         profile_name=profile.name or "Member",
@@ -231,7 +245,15 @@ def create_multi_profile_result_offline(
             "profile_name": ins.profile_name,
             "health_score": ins.health_score,
             "personalized_verdict": ins.personalized_verdict,
-            "key_issue": ins.contraindications[0] if ins.contraindications else "None flagged"
+            "key_issue": (
+                ins.contraindications[0]
+                if ins.contraindications
+                else (
+                    "Low nutritional density / ultra-processed"
+                    if ins.health_score < 45
+                    else "No clinical conflicts"
+                )
+            )
         }
         for ins in insights
     ]
