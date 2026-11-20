@@ -11,6 +11,8 @@ class ProfileAuditInsight(BaseModel):
     personalized_summary: str = Field(description="Clinical explanation tailored to this profile's conditions")
     contraindications: List[str] = Field(default_factory=list, description="Specific medical or allergen conflicts")
     ingredient_warnings: List[IngredientItem] = Field(default_factory=list, description="Ingredients with tailored warning tags")
+    allergy_trigger: Optional[str] = Field(default=None, description="Allergen causing score to be rated 0")
+    base_score_without_allergy: Optional[int] = Field(default=None, description="Base nutritional score if not for allergy")
 
 class MultiProfileScanResult(BaseModel):
     product_name: str = Field(description="Identified brand and product title")

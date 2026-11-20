@@ -65,6 +65,20 @@ def compute_product_base_hash(content: bytes) -> str:
     h.update(content)
     return h.hexdigest()
 
+def compute_profile_fingerprint(profile: Optional[UserProfile]) -> str:
+    if not profile:
+        return "default"
+    parts = [
+        str(profile.id or ""),
+        str(profile.name or ""),
+        ",".join(sorted(profile.medical_conditions or [])),
+        ",".join(sorted(profile.allergies or [])),
+        ",".join(sorted(profile.dietary_preferences or [])),
+        ",".join(sorted(profile.custom_avoid_list or []))
+    ]
+    raw_str = "|".join(parts)
+    return hashlib.sha256(raw_str.encode('utf-8')).hexdigest()[:16]
+
 def compute_audit_hash(content: bytes, profile_str: str) -> str:
     h = hashlib.sha256()
     h.update(content)
@@ -107,9 +121,20 @@ def store_product_in_cache(
             nh = hashlib.sha256(nk.encode('utf-8')).hexdigest()
             BASE_PRODUCT_CACHE[nh] = clean_base
 
-    # 2. Profile audit cache (if profile provided)
+    # 2. Profile audit cache (strictly keyed by profile content fingerprint)
     if profile:
-        pid = profile.id or profile.name or "default"
+        p_base_id = profile.id or profile.name or "default"
+        p_fp = compute_profile_fingerprint(profile)
+        pid = f"{p_base_id}_{p_fp}"
+
+        # Evict outdated cache entries for this profile if conditions or allergies were edited
+        keys_to_del = [k for k in list(AUDIT_CACHE.keys()) if (f":{p_base_id}_" in k and not k.endswith(f":{pid}"))]
+        for old_k in keys_to_del:
+            AUDIT_CACHE.pop(old_k, None)
+        safety_keys_to_del = [k for k in list(SAFETY_CACHE.keys()) if (f":{p_base_id}_" in k and not k.endswith(f":{pid}"))]
+        for old_sk in safety_keys_to_del:
+            SAFETY_CACHE.pop(old_sk, None)
+
         if img_hash:
             AUDIT_CACHE[f"img:{img_hash}:{pid}"] = (now, res_to_store)
         for nk in name_keys:
@@ -124,7 +149,12 @@ def find_in_audit_cache(
     profile: Optional[UserProfile] = None
 ) -> Optional[LabelAnalysisResult]:
     now = time.time()
-    pid = (profile.id or profile.name or "default") if profile else "default"
+    if profile:
+        p_base_id = profile.id or profile.name or "default"
+        p_fp = compute_profile_fingerprint(profile)
+        pid = f"{p_base_id}_{p_fp}"
+    else:
+        pid = "default"
 
     if image_bytes:
         img_hash = compute_product_base_hash(image_bytes)
@@ -148,6 +178,8 @@ def find_in_audit_cache(
                 ts, item = AUDIT_CACHE[hash_key]
                 if now - ts < CACHE_TTL_SECONDS:
                     return item
+
+    return None
 
     return None
 
@@ -187,12 +219,18 @@ async def evaluate_profile_safety_endpoint(payload: EvaluateProfileSafetyRequest
     without re-running OCR or web scraping.
     """
     prof = payload.active_profile
-    prof_sig = f"{prof.id or prof.name or 'default'}_{'_'.join(sorted(prof.medical_conditions or []))}_{'_'.join(sorted(prof.allergies or []))}_{'_'.join(sorted(prof.custom_avoid_list or []))}"
+    p_base_id = prof.id or prof.name or "default"
+    prof_sig = f"{p_base_id}_{compute_profile_fingerprint(prof)}"
     p_key = payload.product_name or payload.product_hash or ""
     if not p_key and isinstance(payload.base_product, dict):
         p_key = payload.base_product.get("product_name", "")
     elif not p_key and hasattr(payload.base_product, "product_name"):
         p_key = payload.base_product.product_name
+
+    # Evict any stale entries for this profile if profile parameters were modified
+    safety_keys_to_del = [k for k in list(SAFETY_CACHE.keys()) if (f":{p_base_id}_" in k and not k.endswith(f":{prof_sig}"))]
+    for old_sk in safety_keys_to_del:
+        SAFETY_CACHE.pop(old_sk, None)
 
     safety_key = f"safety:{p_key}:{prof_sig}"
 

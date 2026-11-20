@@ -78,9 +78,16 @@ export const ProductInsightsModal: React.FC<ProductInsightsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-200/80 text-zinc-800 font-mono text-xs font-bold">
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-xs font-bold ${
+              product.health_score === 0 && product.allergy_trigger
+                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                : 'bg-zinc-200/80 text-zinc-800'
+            }`}>
               <span>{product.health_score}</span>
               <span className="text-[10px] opacity-60">/100</span>
+              {product.health_score === 0 && product.allergy_trigger && (
+                <span className="text-[9px] uppercase tracking-wider font-sans font-bold text-rose-700 ml-1">Allergen</span>
+              )}
             </div>
             <button
               type="button"
@@ -101,6 +108,8 @@ export const ProductInsightsModal: React.FC<ProductInsightsModalProps> = ({
             healthScore={product.health_score}
             verdict={product.personalized_verdict}
             summary={product.simple_summary}
+            allergyTrigger={product.allergy_trigger}
+            baseScoreWithoutAllergy={product.base_score_without_allergy}
           />
 
           {/* 2. Red Flags & Violations */}

@@ -32,12 +32,32 @@ def evaluate_profile_safety_offline(
 
     # Extract all text from ingredients and nutrition
     ingredients = base_product.ingredient_breakdown or []
-    all_ing_text = " ".join([i.ingredient for i in ingredients]).lower()
+    all_ing_text = " ".join([getattr(i, 'ingredient', str(i)) for i in ingredients]).lower()
+    p_name_lower = (getattr(base_product, 'product_name', '') or '').lower()
     
     nutr = base_product.nutrition_card
     added_sugars = float(getattr(nutr, "added_sugars_g", 0.0) or 0.0) if nutr else 0.0
     sodium = float(getattr(nutr, "sodium_mg", 0.0) or 0.0) if nutr else 0.0
     sat_fat = float(getattr(nutr, "saturated_fat_g", 0.0) or 0.0) if nutr else 0.0
+
+    # 0. Pure baseline diagnosis from scratch using unpenalized base score or mathematical piecewise scoring engine
+    pure_base_score = getattr(base_product, "base_health_score", None)
+    if pure_base_score is None:
+        if getattr(base_product, "nutrition_card", None):
+            from app.services.scoring_engine import compute_piecewise_health_score
+            try:
+                math_score_data = compute_piecewise_health_score(
+                    nutrition=base_product.nutrition_card,
+                    ingredients=base_product.ingredient_breakdown or [],
+                    integrity=getattr(base_product, "nutrient_integrity", None),
+                    deceptive_claims=getattr(base_product, "deceptive_claims_flagged", []) or [],
+                    product_name=getattr(base_product, "product_name", "") or ""
+                )
+                pure_base_score = int(math_score_data.get("final_health_score", 50))
+            except Exception:
+                pure_base_score = getattr(base_product, "health_score", 50)
+        else:
+            pure_base_score = getattr(base_product, "health_score", 50)
 
     # 1. Acidity / Acid Reflux / GERD / Gastritis Check
     if any(c in cond for cond in med_conditions for c in ["acidity", "acid reflux", "gerd", "gastritis", "heartburn"]):
@@ -95,32 +115,42 @@ def evaluate_profile_safety_offline(
 
     # 6. Celiac Disease / Gluten Sensitivity
     if any("celiac" in c or "gluten" in c for c in med_conditions) or any("gluten" in a or "wheat" in a for a in allergies):
-        if any(term in all_ing_text for term in ["wheat", "maida", "atta", "gluten", "barley", "malt", "spelt"]):
+        if any(term in all_ing_text or term in p_name_lower for term in ["wheat", "maida", "atta", "gluten", "barley", "malt", "spelt"]):
             contraindications.append("Contains gluten/wheat grains strictly contraindicated for celiac disease.")
             penalty_points += 40
             has_severe_violation = True
 
     # 7. Lactose Intolerance
     if any("lactose" in c for c in med_conditions) or any("lactose" in a for a in allergies):
-        if any(term in all_ing_text for term in ["milk", "whey", "lactose", "milk solids", "cheese", "paneer", "curd"]):
+        if any(term in all_ing_text or term in p_name_lower for term in ["milk", "whey", "lactose", "milk solids", "cheese", "paneer", "curd"]):
             contraindications.append("Contains dairy lactose triggering bloating, cramping, and gastrointestinal distress.")
             penalty_points += 15
             has_moderate_warning = True
 
-    # 8. Allergy Check (Strict Avoidance)
+    # 8. Severe Allergy Check (Strict Anaphylaxis/Allergy Protocol: Rates 0/100)
+    matched_allergies = []
     for allergy in allergies:
-        if allergy and allergy in all_ing_text:
-            contraindications.append(f"Direct allergen detected: '{allergy}'. STRICTLY AVOID.")
-            penalty_points += 45
-            has_severe_violation = True
-        if "peanut" in allergy and any(t in all_ing_text for t in ["peanut", "groundnut"]):
-            contraindications.append("Peanut allergen detected. STRICTLY AVOID.")
-            penalty_points += 45
-            has_severe_violation = True
-        if "soy" in allergy and any(t in all_ing_text for t in ["soy", "soya", "soy lecithin"]):
-            contraindications.append("Soy allergen detected. STRICTLY AVOID.")
-            penalty_points += 45
-            has_severe_violation = True
+        if not allergy:
+            continue
+        if allergy in all_ing_text or allergy in p_name_lower:
+            matched_allergies.append(allergy.title())
+        elif "peanut" in allergy and any(t in all_ing_text or t in p_name_lower for t in ["peanut", "groundnut", "arachis"]):
+            matched_allergies.append("Peanut")
+        elif "tree nut" in allergy or ("nut" in allergy and "peanut" not in allergy and "coconut" not in allergy):
+            if any(t in all_ing_text or t in p_name_lower for t in ["almond", "cashew", "walnut", "pistachio", "hazelnut", "pecan"]):
+                matched_allergies.append("Tree Nut")
+        elif "soy" in allergy and any(t in all_ing_text or t in p_name_lower for t in ["soy", "soya", "soybean", "edamame", "tofu"]):
+            matched_allergies.append("Soy")
+        elif ("milk" in allergy or "dairy" in allergy) and any(t in all_ing_text or t in p_name_lower for t in ["milk", "dairy", "whey", "casein", "curd", "paneer", "cheese", "butter", "ghee", "lactose"]):
+            matched_allergies.append("Milk / Dairy")
+        elif ("gluten" in allergy or "wheat" in allergy) and any(t in all_ing_text or t in p_name_lower for t in ["wheat", "maida", "atta", "gluten", "barley", "spelt"]):
+            matched_allergies.append("Wheat / Gluten")
+        elif "egg" in allergy and any(t in all_ing_text or t in p_name_lower for t in ["egg", "albumin", "ovalbumin"]):
+            matched_allergies.append("Egg")
+        elif ("fish" in allergy or "seafood" in allergy or "shellfish" in allergy) and any(t in all_ing_text or t in p_name_lower for t in ["fish", "prawn", "crab", "shrimp", "gelatin"]):
+            matched_allergies.append("Fish / Shellfish")
+        elif "sesame" in allergy and any(t in all_ing_text or t in p_name_lower for t in ["sesame", "til", "tahini"]):
+            matched_allergies.append("Sesame")
 
     # 9. Dietary Preferences Check
     if any("vegan" in d for d in dietary):
@@ -137,7 +167,7 @@ def evaluate_profile_safety_offline(
 
     # 10. Custom Avoid List Check
     for item in avoid_list:
-        if item and item in all_ing_text:
+        if item and (item in all_ing_text or item in p_name_lower):
             contraindications.append(f"Contains '{item}' which is on your active personal avoidance list.")
             penalty_points += 20
             has_severe_violation = True
@@ -161,18 +191,24 @@ def evaluate_profile_safety_offline(
             penalty_points += 15
             has_moderate_warning = True
 
-    # Adjust health score dynamically based on profile penalties (capped at min 10)
-    orig_score = getattr(base_product, "base_health_score", None) or getattr(base_product, "health_score", 50)
-    adjusted_score = max(10, orig_score - penalty_points) if penalty_points > 0 else orig_score
-
-    # Calculate Verdict based on profile contraindications and overall nutritional integrity
-    if has_severe_violation:
+    # Severe Allergy Enforcement: Rating 0/100
+    has_allergy_trigger = len(matched_allergies) > 0
+    if has_allergy_trigger:
+        allergen_str = ", ".join(list(dict.fromkeys(matched_allergies)))
+        allergy_warning = f"Rated 0/100 (Triggers severe allergy: {allergen_str}). Base nutritional score would be {pure_base_score}/100 without allergy."
+        contraindications.insert(0, allergy_warning)
+        adjusted_score = 0
         verdict = "AVOID (VIOLATES PROFILE)"
-    elif penalty_points > 0:
-        verdict = "AVOID (VIOLATES PROFILE)" if adjusted_score < 45 else "CAUTION"
     else:
-        # Zero profile violations — verdict reflects food nutritional quality without falsely claiming profile violation
-        verdict = "SAFE FOR YOU" if adjusted_score >= 70 else "CAUTION"
+        allergen_str = None
+        allergy_warning = None
+        adjusted_score = max(10, min(100, pure_base_score - penalty_points)) if penalty_points > 0 else pure_base_score
+        if has_severe_violation:
+            verdict = "AVOID (VIOLATES PROFILE)"
+        elif penalty_points > 0:
+            verdict = "AVOID (VIOLATES PROFILE)" if adjusted_score < 45 else "CAUTION"
+        else:
+            verdict = "SAFE FOR YOU" if adjusted_score >= 70 else "CAUTION"
 
     # Produce updated personalized warnings on ingredients
     updated_ingredients = []
@@ -180,14 +216,16 @@ def evaluate_profile_safety_offline(
         ing_dict = ing.model_dump() if hasattr(ing, "model_dump") else dict(ing)
         name_lower = ing_dict.get("ingredient", "").lower()
         warns = []
+        if has_allergy_trigger and (any(a.lower() in name_lower for a in matched_allergies) or any(a.lower() in p_name_lower for a in matched_allergies)):
+            warns.append(f"⚠️ DIRECT ALLERGEN ({allergen_str}) — RATED 0/100 STRICTLY AVOID")
+        elif any(a in name_lower for a in allergies):
+            warns.append("⚠️ DIRECT ALLERGEN MATCH — RATED 0/100 STRICTLY AVOID")
         if any(c in cond for cond in med_conditions for c in ["acidity", "acid reflux", "gerd", "gastritis"]) and any(t in name_lower for t in ["citric", "330", "caffeine", "acid", "carbonat"]):
             warns.append("Triggers gastric acidity & reflux (~70% flare-up risk)")
         if any("diabetes" in c for c in med_conditions) and any(t in name_lower for t in ["sugar", "maltodextrin", "glucose", "dextrose"]):
             warns.append("Glycemic surge risk for diabetes")
         if any("hypertension" in c for c in med_conditions) and any(t in name_lower for t in ["salt", "sodium", "621", "211", "msg"]):
             warns.append("Elevates blood pressure")
-        if any(a in name_lower for a in allergies):
-            warns.append("Direct allergen match — strictly avoid")
         if warns:
             ing_dict["personalized_warning"] = " • ".join(warns)
             ing_dict["concern_level"] = "HIGH"
@@ -202,7 +240,11 @@ def evaluate_profile_safety_offline(
         "personalized_verdict": verdict,
         "contraindications": contraindications,
         "ingredient_breakdown": updated_ingredients,
-        "adjusted_health_score": adjusted_score
+        "adjusted_health_score": adjusted_score,
+        "allergy_trigger": allergen_str,
+        "base_score_without_allergy": pure_base_score if has_allergy_trigger else None,
+        "allergy_warning": allergy_warning,
+        "pure_base_score": pure_base_score
     }
 
 
@@ -213,7 +255,9 @@ def create_profile_insight_from_base(
     from app.schemas.multi_profile import ProfileAuditInsight
     from app.schemas.analysis import IngredientItem
     res = evaluate_profile_safety_offline(base_product, profile)
-    if res["contraindications"]:
+    if res.get("allergy_warning"):
+        summary = res["allergy_warning"]
+    elif res["contraindications"]:
         summary = " • ".join(res["contraindications"][:2])
     elif res["adjusted_health_score"] >= 70:
         summary = "Safe for your dietary profile with no major clinical friction."
@@ -229,6 +273,8 @@ def create_profile_insight_from_base(
         personalized_verdict=res["personalized_verdict"],
         personalized_summary=summary,
         contraindications=res["contraindications"],
+        allergy_trigger=res.get("allergy_trigger"),
+        base_score_without_allergy=res.get("base_score_without_allergy"),
         ingredient_warnings=[
             IngredientItem(**i) if isinstance(i, dict) else i
             for i in res["ingredient_breakdown"]

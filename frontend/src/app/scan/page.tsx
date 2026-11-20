@@ -51,7 +51,9 @@ export default function ScanPage() {
               ...prev,
               health_score: evalData.adjusted_health_score ?? prev.health_score,
               personalized_verdict: evalData.personalized_verdict as import('@/types').PersonalizedVerdict,
-              ingredient_breakdown: evalData.ingredient_breakdown || prev.ingredient_breakdown
+              ingredient_breakdown: evalData.ingredient_breakdown || prev.ingredient_breakdown,
+              allergy_trigger: evalData.allergy_trigger ?? undefined,
+              base_score_without_allergy: evalData.base_score_without_allergy ?? undefined
             } : null);
           }
         })
@@ -590,6 +592,16 @@ export default function ScanPage() {
                               Score: {item.health_score}/100
                             </span>
                           </div>
+                          {matchingInsight?.allergy_trigger && (
+                            <div className="mb-2 px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700 font-mono">
+                              ⚠️ Allergen: <strong>{matchingInsight.allergy_trigger}</strong> (Rated 0/100)
+                              {matchingInsight.base_score_without_allergy !== undefined && (
+                                <span className="block text-[9px] text-zinc-500 font-sans">
+                                  Base nutritional score: {matchingInsight.base_score_without_allergy}/100
+                                </span>
+                              )}
+                            </div>
+                          )}
                           <div className="text-[11px] font-semibold text-zinc-600 mb-2">
                             Verdict: <span className="font-mono text-zinc-900">{item.personalized_verdict}</span>
                           </div>
@@ -637,7 +649,9 @@ export default function ScanPage() {
               healthScore={
                 activeInsight
                   ? activeInsight.health_score
-                  : (result.base_health_score ?? result.health_score)
+                  : multiProfileResult
+                  ? (result.base_health_score ?? result.health_score)
+                  : result.health_score
               }
               verdict={
                 activeInsight
@@ -656,6 +670,20 @@ export default function ScanPage() {
                   : multiProfileResult
                   ? multiProfileResult.household_summary
                   : result.simple_summary
+              }
+              allergyTrigger={
+                activeInsight
+                  ? activeInsight.allergy_trigger
+                  : !multiProfileResult
+                  ? result.allergy_trigger
+                  : undefined
+              }
+              baseScoreWithoutAllergy={
+                activeInsight
+                  ? activeInsight.base_score_without_allergy
+                  : !multiProfileResult
+                  ? result.base_score_without_allergy
+                  : undefined
               }
             />
 

@@ -51,6 +51,10 @@ export const evaluateProfileSafety = async (
   adjusted_health_score: number;
   contraindications: string[];
   ingredient_breakdown: IngredientItem[];
+  allergy_trigger?: string;
+  base_score_without_allergy?: number;
+  allergy_warning?: string;
+  pure_base_score?: number;
 }> => {
   const res = await apiClient.post('/api/evaluate-profile-safety', {
     product_name: productNameOrHash,

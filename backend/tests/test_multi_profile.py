@@ -230,3 +230,172 @@ def test_distinct_evaluations_and_no_self_contamination(mock_product, household_
     dad_sugar = next(i for i in dad_res["ingredient_warnings"] if i["ingredient"] == "Sugar")
     assert any(term in dad_sugar["personalized_warning"].lower() for term in ["diabet", "glycemic", "sugar", "insulin", "spike", "glucose"])
 
+
+def test_severe_allergy_rates_zero_with_base_score_context(mock_product):
+    """
+    Food allergies are life-threatening:
+    1. If an ingredient matches an allergy, product MUST be rated 0/100.
+    2. Must explicitly state that it is rated 0 due to allergy, and what base nutritional score would be without allergy.
+    3. Offending ingredient must be flagged with HIGH concern and DIRECT ALLERGEN warning.
+    """
+    from app.services.profile_evaluator import evaluate_profile_safety_offline
+
+    allergy_product = mock_product.model_copy(deep=True)
+    allergy_product.product_name = "Crunchy Peanut Granola Bar"
+    allergy_product.health_score = 72
+    allergy_product.base_health_score = 72
+    allergy_product.ingredient_breakdown = [
+        IngredientItem(ingredient="Rolled Oats", purpose="Whole grain", concern_level="LOW"),
+        IngredientItem(ingredient="Roasted Peanuts", purpose="Nut protein", concern_level="LOW"),
+        IngredientItem(ingredient="Honey", purpose="Sweetener", concern_level="MEDIUM")
+    ]
+
+    peanut_allergy_profile = UserProfile(
+        id="profile_allergy_user",
+        name="Allergy User",
+        allergies=["Peanut Allergy"],
+        medical_conditions=[],
+        dietary_preferences=[]
+    )
+
+    eval_res = evaluate_profile_safety_offline(allergy_product, peanut_allergy_profile)
+
+    assert eval_res["adjusted_health_score"] == 0, f"Expected 0 for severe allergy, got {eval_res['adjusted_health_score']}"
+    assert eval_res["personalized_verdict"] == "AVOID (VIOLATES PROFILE)"
+    assert "Peanut" in eval_res["allergy_trigger"]
+    assert eval_res["base_score_without_allergy"] == 72
+
+    # Check explicit contraindication text
+    allergy_contra = [c for c in eval_res["contraindications"] if "severe allergy" in c.lower()]
+    assert len(allergy_contra) > 0
+    assert "Rated 0/100" in allergy_contra[0]
+    assert "Peanut" in allergy_contra[0]
+    assert "72/100" in allergy_contra[0]
+
+    # Check ingredient warning
+    peanut_ing = next(i for i in eval_res["ingredient_breakdown"] if "Peanut" in i["ingredient"])
+    assert peanut_ing["concern_level"] == "HIGH"
+    assert "DIRECT ALLERGEN" in peanut_ing["personalized_warning"]
+    assert "RATED 0/100" in peanut_ing["personalized_warning"]
+
+
+def test_profile_editing_invalidates_cache_and_forces_fresh_scan(mock_product):
+    """
+    When a user edits their profile (e.g. adds an allergy), the cache fingerprint must change,
+    old cache entries must be evicted, and a fresh audit must be run rather than returning stale results.
+    """
+    from app.main import (
+        compute_profile_fingerprint,
+        store_product_in_cache,
+        find_in_audit_cache,
+        AUDIT_CACHE,
+        SAFETY_CACHE
+    )
+
+    # Initial profile: healthy with no allergies
+    prof_v1 = UserProfile(
+        id="prof_editing_test",
+        name="Alex",
+        allergies=[],
+        medical_conditions=["Mild Acidity"],
+        dietary_preferences=["Vegetarian"]
+    )
+    fp_v1 = compute_profile_fingerprint(prof_v1)
+
+    # Store product audit for prof_v1
+    prod_v1 = mock_product.model_copy(deep=True)
+    prod_v1.product_name = "Cashew Almond Milk"
+    prod_v1.health_score = 65
+    prod_v1.personalized_verdict = "SAFE FOR YOU"
+    store_product_in_cache(prod_v1, query_text="Cashew Almond Milk", profile=prof_v1)
+
+    # Assert cache hit for prof_v1
+    hit_v1 = find_in_audit_cache(query_text="Cashew Almond Milk", profile=prof_v1)
+    assert hit_v1 is not None
+    assert hit_v1.health_score == 65
+
+    # User edits profile: adds Nut Allergy
+    prof_v2 = UserProfile(
+        id="prof_editing_test",
+        name="Alex",
+        allergies=["Nut Allergy"],
+        medical_conditions=["Mild Acidity"],
+        dietary_preferences=["Vegetarian"]
+    )
+    fp_v2 = compute_profile_fingerprint(prof_v2)
+
+    # Fingerprints must be completely different
+    assert fp_v1 != fp_v2
+
+    # Querying cache with edited profile MUST NOT return stale v1 results!
+    stale_check = find_in_audit_cache(query_text="Cashew Almond Milk", profile=prof_v2)
+    assert stale_check is None, "Cache should MISS when profile has been edited!"
+
+    # Now store audit for prof_v2 (rated 0 due to nut allergy)
+    prod_v2 = mock_product.model_copy(deep=True)
+    prod_v2.product_name = "Cashew Almond Milk"
+    prod_v2.health_score = 0
+    prod_v2.personalized_verdict = "AVOID (VIOLATES PROFILE)"
+    prod_v2.allergy_trigger = "Nut Allergy"
+    store_product_in_cache(prod_v2, query_text="Cashew Almond Milk", profile=prof_v2)
+
+    # Verify old v1 cache entries were evicted
+    v1_keys = [k for k in AUDIT_CACHE.keys() if f":prof_editing_test_{fp_v1}" in k]
+    assert len(v1_keys) == 0, "Old cache entries for edited profile should be evicted!"
+
+    # New cache hit for v2
+    hit_v2 = find_in_audit_cache(query_text="Cashew Almond Milk", profile=prof_v2)
+    assert hit_v2 is not None
+    assert hit_v2.health_score == 0
+    assert hit_v2.allergy_trigger == "Nut Allergy"
+
+
+def test_reevaluation_starts_from_pure_base_no_compounding(mock_product):
+    """
+    Re-evaluating a product against different profiles must diagnose from the product's authentic facts,
+    and never compound deductions from a previous profile's evaluation.
+    """
+    from app.services.profile_evaluator import evaluate_profile_safety_offline
+
+    base = mock_product.model_copy(deep=True)
+    base.product_name = "Oat & Chia Energy Bar"
+    base.health_score = 75
+    base.base_health_score = 75
+    base.ingredient_breakdown = [
+        IngredientItem(ingredient="Rolled Oats", purpose="Grain", concern_level="LOW"),
+        IngredientItem(ingredient="Chia Seeds", purpose="Superfood", concern_level="LOW"),
+        IngredientItem(ingredient="Sugar", purpose="Sweetener", concern_level="HIGH")
+    ]
+    base.nutrition_card.added_sugars_g = 15.0
+
+    # Profile A: Severe Diabetes (deduction for 15g added sugar)
+    prof_diabetic = UserProfile(
+        id="p_diabetic",
+        name="Diabetic User",
+        medical_conditions=["Type 2 Diabetes"],
+        allergies=[]
+    )
+    res_a = evaluate_profile_safety_offline(base, prof_diabetic)
+    assert res_a["adjusted_health_score"] < 75
+    penalized_score = res_a["adjusted_health_score"]
+
+    # Now create an already-evaluated product from res_a (simulate what client sends back)
+    evaluated_product = base.model_copy(deep=True)
+    evaluated_product.health_score = penalized_score  # lower score e.g. 50
+    evaluated_product.base_health_score = 75  # original base remains 75
+
+    # Profile B: Clean user with no restrictions
+    prof_clean = UserProfile(
+        id="p_clean",
+        name="Clean User",
+        medical_conditions=[],
+        allergies=[],
+        dietary_preferences=[]
+    )
+    res_b = evaluate_profile_safety_offline(evaluated_product, prof_clean)
+
+    # Profile B must receive the pure base score (75), NOT the penalized score (50)!
+    assert res_b["adjusted_health_score"] == 75, f"Expected 75 but got {res_b['adjusted_health_score']} (compounding bug!)"
+    assert res_b["personalized_verdict"] == "SAFE FOR YOU"
+
+

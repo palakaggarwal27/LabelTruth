@@ -2,12 +2,15 @@
 
 import React from 'react';
 import { PersonalizedVerdict } from '@/types';
+import { AlertOctagon, AlertTriangle } from 'lucide-react';
 
 interface ScoreCardProps {
   productName: string;
   healthScore: number;
   verdict: PersonalizedVerdict;
   summary: string;
+  allergyTrigger?: string;
+  baseScoreWithoutAllergy?: number;
 }
 
 export const ScoreCard: React.FC<ScoreCardProps> = ({
@@ -15,6 +18,8 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   healthScore,
   verdict,
   summary,
+  allergyTrigger,
+  baseScoreWithoutAllergy,
 }) => {
   // Traffic Light functional color system (Strict, muted, no neon)
   const getVerdictStyles = (v: PersonalizedVerdict) => {
@@ -41,6 +46,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
     }
   };
 
+  const isAllergyZero = healthScore === 0 && Boolean(allergyTrigger);
   const styles = getVerdictStyles(verdict);
 
   return (
@@ -57,12 +63,40 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
 
         {/* Verdict Badge */}
         <div
-          className={`self-start px-3 py-1.5 border rounded-md text-xs font-semibold tracking-wider flex items-center gap-2 ${styles.badge}`}
+          className={`self-start px-3 py-1.5 border rounded-md text-xs font-semibold tracking-wider flex items-center gap-2 ${
+            isAllergyZero
+              ? 'bg-rose-950 text-rose-100 border-rose-800 animate-pulse'
+              : styles.badge
+          }`}
         >
           <span className={`w-2 h-2 rounded-full ${styles.dot}`}></span>
           {verdict}
         </div>
       </div>
+
+      {/* Severe Allergy Alert Banner */}
+      {isAllergyZero && (
+        <div className="mt-5 p-4 bg-rose-50 border border-rose-300 rounded-md text-xs text-rose-900 flex items-start gap-3">
+          <AlertOctagon className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold text-rose-950 text-sm flex items-center gap-2">
+              <span>Severe Allergy Trigger Detected</span>
+              <span className="font-mono text-xs bg-rose-200/80 text-rose-900 px-2 py-0.5 rounded font-bold">
+                {allergyTrigger}
+              </span>
+            </div>
+            <p className="text-rose-800 leading-relaxed text-xs">
+              This product contains ingredients matching your declared allergy (<strong>{allergyTrigger}</strong>). Under strict medical safety guidelines, this product is rated <strong className="text-rose-950 font-bold">0/100 (STRICTLY AVOID)</strong> to protect against allergic reactions.
+            </p>
+            {baseScoreWithoutAllergy !== undefined && (
+              <div className="pt-1.5 text-[11px] text-zinc-700 font-mono">
+                ℹ️ Base nutritional score without allergy would be{' '}
+                <strong className="text-zinc-900 font-bold">{baseScoreWithoutAllergy}/100</strong>.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-6 pt-6 border-t border-zinc-100">
         {/* Health Score */}
@@ -70,12 +104,25 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
           <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
             Health Score
           </div>
-          <div className="text-4xl font-semibold font-mono tracking-tight text-zinc-900 mt-1">
+          <div className={`text-4xl font-semibold font-mono tracking-tight mt-1 ${
+            isAllergyZero ? 'text-rose-600' : 'text-zinc-900'
+          }`}>
             {healthScore}
             <span className="text-base text-zinc-400 font-normal">/100</span>
           </div>
           <div className="text-[11px] text-zinc-500 mt-1 font-light">
-            {healthScore < 40 ? 'Ultra-processed hazard' : healthScore < 70 ? 'Moderate nutritional quality' : 'Clean / Whole food'}
+            {isAllergyZero ? (
+              <span className="text-rose-600 font-medium flex items-center gap-1 mt-0.5">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                Rated 0 due to allergy
+              </span>
+            ) : healthScore < 40 ? (
+              'Ultra-processed hazard'
+            ) : healthScore < 70 ? (
+              'Moderate nutritional quality'
+            ) : (
+              'Clean / Whole food'
+            )}
           </div>
         </div>
 
@@ -92,3 +139,4 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
     </div>
   );
 };
+

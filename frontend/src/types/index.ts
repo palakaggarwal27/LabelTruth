@@ -82,6 +82,8 @@ export interface LabelAnalysisResult {
   healthier_alternative?: HealthierAlternative;
   clean_alternatives?: HealthierAlternative[];
   nutrient_integrity?: NutrientIntegrityMatrix;
+  allergy_trigger?: string;
+  base_score_without_allergy?: number;
   category?: string;
   is_food_label?: boolean;
   label_type?: 'FRONT_OF_PACK' | 'BACK_OF_PACK' | 'FULL_PANEL' | 'NOT_A_LABEL';
@@ -206,6 +208,8 @@ export interface ProfileAuditInsight {
   personalized_summary: string;
   contraindications: string[];
   ingredient_warnings: IngredientItem[];
+  allergy_trigger?: string;
+  base_score_without_allergy?: number;
 }
 
 export interface MultiProfileScanResult {

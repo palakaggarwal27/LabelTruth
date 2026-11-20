@@ -55,7 +55,7 @@ AUDIT CRITERIA & FORENSIC PROTOCOLS:
      * -7 to -8 pts (Mild Irritation): Mildly aggravates symptoms or causes digestive friction (e.g. mild citric acid in acid sensitivity, refined flours in sluggish digestion).
      * -10 to -12 pts (Moderate Flare-Up Risk): Known trigger likely to provoke symptoms (e.g. carbonation & phosphoric acid in GERD/acidity, >8g added sugar in diabetes, elevated sodium in hypertension, yeast extract in histamine intolerance).
      * -15 to -20 pts (Severe Clinical Escalation): High-impact contraindication that directly worsens pathology (e.g. maltodextrin [GI 110] or liquid glucose in diabetes, excessive MSG/sodium in severe hypertension, high fructose corn syrup in fatty liver/NAFLD, high purines in gout).
-     * -30 pts (Direct Allergen / Autoimmune Violation): Direct conflict with user allergy or autoimmune condition (e.g. peanut, soy, gluten in celiac, dairy in cow's milk allergy). Set personalized_warning in bold: "**⚠️ TRIGGERS YOUR ALLERGY — STRICTLY AVOID**", set concern_level "HIGH", and force "personalized_verdict" to "AVOID (VIOLATES PROFILE)".
+           * SEVERE ALLERGY PROTOCOL (RATED 0/100): Direct conflict with user allergy (e.g. peanut, tree nuts, soy, gluten in celiac, dairy, egg, shellfish, sesame). Food allergies cause acute life-threatening anaphylaxis. You MUST rate "health_score": 0, force "personalized_verdict": "AVOID (VIOLATES PROFILE)", set simple_summary to explicitly state: "Rated 0/100 as it triggers your severe allergy ({allergen}). Base nutritional score would be {score}/100 without allergy.", set personalized_warning on the offending ingredient to "**⚠️ TRIGGERS YOUR ALLERGY — RATED 0/100 STRICTLY AVOID**", and set concern_level "HIGH".
    - Dietary Restrictions (Vegan, Jain): Deduct -25 to -30 pts and set "AVOID (VIOLATES PROFILE)" if animal fats, gelatin, or root vegetables are detected.
 
 5. Intelligent Holistic Health Scoring (0 to 100) & ICMR-NIN Whole-Food Sparing:
@@ -412,13 +412,79 @@ class GeminiVisionService:
             math_ref_score = score_data["final_health_score"]
             ai_score = int(parsed.get("health_score", 0))
 
-            if ai_score > 0:
-                # Use AI score as primary clinical judgement with mathematical reference as anchor
-                # Gives 60% weight to AI holistic nuance and 40% to mathematical baseline
-                blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
-                parsed["health_score"] = max(5, min(100, blended_score))
+            # Enforce severe allergy 0 score protocol
+            allergies = [a.lower().strip() for a in (user_profile.allergies or []) if a.strip()]
+            matched_allergens = []
+            all_ing_str = " ".join([str(item.get("ingredient", "")) for item in parsed.get("ingredient_breakdown", [])]).lower()
+            p_name_str = str(parsed.get("product_name", "")).lower()
+            for al in allergies:
+                if al in all_ing_str or al in p_name_str:
+                    matched_allergens.append(al.title())
+                elif "peanut" in al and any(t in all_ing_str or t in p_name_str for t in ["peanut", "groundnut", "arachis"]):
+                    matched_allergens.append("Peanut")
+                elif "tree nut" in al or ("nut" in al and "peanut" not in al and "coconut" not in al):
+                    if any(t in all_ing_str or t in p_name_str for t in ["almond", "cashew", "walnut", "pistachio", "hazelnut"]):
+                        matched_allergens.append("Tree Nut")
+                elif "soy" in al and any(t in all_ing_str or t in p_name_str for t in ["soy", "soya", "soybean"]):
+                    matched_allergens.append("Soy")
+                elif ("milk" in al or "dairy" in al) and any(t in all_ing_str or t in p_name_str for t in ["milk", "dairy", "whey", "casein", "curd", "paneer", "cheese", "butter", "ghee", "lactose"]):
+                    matched_allergens.append("Milk / Dairy")
+                elif ("gluten" in al or "wheat" in al) and any(t in all_ing_str or t in p_name_str for t in ["wheat", "maida", "atta", "gluten", "barley", "spelt"]):
+                    matched_allergens.append("Wheat / Gluten")
+
+            if matched_allergens:
+                allergen_name = ", ".join(list(dict.fromkeys(matched_allergens)))
+                parsed["health_score"] = 0
+                parsed["base_health_score"] = math_ref_score
+                parsed["allergy_trigger"] = allergen_name
+                parsed["base_score_without_allergy"] = math_ref_score
+                parsed["personalized_verdict"] = "AVOID (VIOLATES PROFILE)"
+                allergy_msg = f"Rated 0/100 (Triggers severe allergy: {allergen_name}). Base nutritional score would be {math_ref_score}/100 otherwise."
+                if "simple_summary" in parsed:
+                    parsed["simple_summary"] = f"{allergy_msg} {parsed['simple_summary']}"
+                else:
+                    parsed["simple_summary"] = allergy_msg
             else:
-                parsed["health_score"] = math_ref_score
+                # Enforce severe allergy 0 score protocol
+                allergies = [a.lower().strip() for a in (user_profile.allergies or []) if a.strip()]
+                matched_allergens = []
+                all_ing_str = " ".join([str(item.get("ingredient", "")) for item in parsed.get("ingredient_breakdown", [])]).lower()
+                p_name_str = str(parsed.get("product_name", "")).lower()
+                for al in allergies:
+                    if al in all_ing_str or al in p_name_str:
+                        matched_allergens.append(al.title())
+                    elif "peanut" in al and any(t in all_ing_str or t in p_name_str for t in ["peanut", "groundnut", "arachis"]):
+                        matched_allergens.append("Peanut")
+                    elif "tree nut" in al or ("nut" in al and "peanut" not in al and "coconut" not in al):
+                        if any(t in all_ing_str or t in p_name_str for t in ["almond", "cashew", "walnut", "pistachio", "hazelnut"]):
+                            matched_allergens.append("Tree Nut")
+                    elif "soy" in al and any(t in all_ing_str or t in p_name_str for t in ["soy", "soya", "soybean"]):
+                        matched_allergens.append("Soy")
+                    elif ("milk" in al or "dairy" in al) and any(t in all_ing_str or t in p_name_str for t in ["milk", "dairy", "whey", "casein", "curd", "paneer", "cheese", "butter", "ghee", "lactose"]):
+                        matched_allergens.append("Milk / Dairy")
+                    elif ("gluten" in al or "wheat" in al) and any(t in all_ing_str or t in p_name_str for t in ["wheat", "maida", "atta", "gluten", "barley", "spelt"]):
+                        matched_allergens.append("Wheat / Gluten")
+
+                if matched_allergens:
+                    allergen_name = ", ".join(list(dict.fromkeys(matched_allergens)))
+                    parsed["health_score"] = 0
+                    parsed["base_health_score"] = math_ref_score
+                    parsed["allergy_trigger"] = allergen_name
+                    parsed["base_score_without_allergy"] = math_ref_score
+                    parsed["personalized_verdict"] = "AVOID (VIOLATES PROFILE)"
+                    allergy_msg = f"Rated 0/100 (Triggers severe allergy: {allergen_name}). Base nutritional score would be {math_ref_score}/100 otherwise."
+                    if "simple_summary" in parsed:
+                        parsed["simple_summary"] = f"{allergy_msg} {parsed['simple_summary']}"
+                    else:
+                        parsed["simple_summary"] = allergy_msg
+                else:
+                    if ai_score > 0:
+                        blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
+                        parsed["health_score"] = max(5, min(100, blended_score))
+                    else:
+                        parsed["health_score"] = math_ref_score
+                    parsed["base_health_score"] = math_ref_score
+                parsed["base_health_score"] = math_ref_score
         except Exception as score_err:
             logger.warning(f"Error computing piecewise health score: {score_err}")
 
@@ -496,11 +562,45 @@ class GeminiVisionService:
                 math_ref_score = score_data["final_health_score"]
                 ai_score = int(parsed.get("health_score", 0))
 
-                if ai_score > 0:
-                    blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
-                    parsed["health_score"] = max(5, min(100, blended_score))
+                # Enforce severe allergy 0 score protocol
+                allergies = [a.lower().strip() for a in (user_profile.allergies or []) if a.strip()]
+                matched_allergens = []
+                all_ing_str = " ".join([str(item.get("ingredient", "")) for item in parsed.get("ingredient_breakdown", [])]).lower()
+                p_name_str = str(parsed.get("product_name", "")).lower()
+                for al in allergies:
+                    if al in all_ing_str or al in p_name_str:
+                        matched_allergens.append(al.title())
+                    elif "peanut" in al and any(t in all_ing_str or t in p_name_str for t in ["peanut", "groundnut", "arachis"]):
+                        matched_allergens.append("Peanut")
+                    elif "tree nut" in al or ("nut" in al and "peanut" not in al and "coconut" not in al):
+                        if any(t in all_ing_str or t in p_name_str for t in ["almond", "cashew", "walnut", "pistachio", "hazelnut"]):
+                            matched_allergens.append("Tree Nut")
+                    elif "soy" in al and any(t in all_ing_str or t in p_name_str for t in ["soy", "soya", "soybean"]):
+                        matched_allergens.append("Soy")
+                    elif ("milk" in al or "dairy" in al) and any(t in all_ing_str or t in p_name_str for t in ["milk", "dairy", "whey", "casein", "curd", "paneer", "cheese", "butter", "ghee", "lactose"]):
+                        matched_allergens.append("Milk / Dairy")
+                    elif ("gluten" in al or "wheat" in al) and any(t in all_ing_str or t in p_name_str for t in ["wheat", "maida", "atta", "gluten", "barley", "spelt"]):
+                        matched_allergens.append("Wheat / Gluten")
+
+                if matched_allergens:
+                    allergen_name = ", ".join(list(dict.fromkeys(matched_allergens)))
+                    parsed["health_score"] = 0
+                    parsed["base_health_score"] = math_ref_score
+                    parsed["allergy_trigger"] = allergen_name
+                    parsed["base_score_without_allergy"] = math_ref_score
+                    parsed["personalized_verdict"] = "AVOID (VIOLATES PROFILE)"
+                    allergy_msg = f"Rated 0/100 (Triggers severe allergy: {allergen_name}). Base nutritional score would be {math_ref_score}/100 otherwise."
+                    if "simple_summary" in parsed:
+                        parsed["simple_summary"] = f"{allergy_msg} {parsed['simple_summary']}"
+                    else:
+                        parsed["simple_summary"] = allergy_msg
                 else:
-                    parsed["health_score"] = math_ref_score
+                    if ai_score > 0:
+                        blended_score = int(round(0.60 * ai_score + 0.40 * math_ref_score))
+                        parsed["health_score"] = max(5, min(100, blended_score))
+                    else:
+                        parsed["health_score"] = math_ref_score
+                    parsed["base_health_score"] = math_ref_score
             except Exception as score_err:
                 logger.warning(f"Error computing piecewise health score for text query: {score_err}")
 
