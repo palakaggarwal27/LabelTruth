@@ -417,6 +417,37 @@ def test_audit_cart_endpoint():
     assert "haldiram" not in first_item["cleaner_alternative"]["name"].lower()
     assert first_item["cleaner_alternative"]["health_score"] > first_item["health_score"]
 
+@patch("app.services.cart_audit_service.tinyfish_service.search_and_fetch_bop", new_callable=AsyncMock)
+@patch("app.services.cart_audit_service.tinyfish_service.find_pincode_alternatives", new_callable=AsyncMock)
+def test_audit_cart_endpoint_with_item_names(mock_alts, mock_bop):
+    mock_bop.return_value = "Ingredients: Refined wheat flour, palm oil, salt, flavor enhancer."
+    mock_alts.return_value = []
+    response = client.post(
+        "/api/audit-cart",
+        data={
+            "item_names": "Maggi 2-Minute Noodles, Lay's Classic Salted",
+            "pincode": "110001",
+            "user_profile": json.dumps({"medical_conditions": []})
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_items"] == 2
+    assert len(data["items"]) == 2
+    assert "Maggi" in data["items"][0]["product_name"]
+
+def test_audit_cart_endpoint_validation_error():
+    """Verify that when neither images nor item names are supplied, an informative error is returned"""
+    response = client.post(
+        "/api/audit-cart",
+        data={
+            "pincode": "110001",
+            "user_profile": "{}"
+        }
+    )
+    assert response.status_code == 400
+    assert "No packaged food products or cart items were detected" in response.json()["detail"]
+
 def test_whole_food_natural_fat_scoring():
     """Verify clean whole food (100% peanut butter) is not penalized 30 points for natural fat/calories"""
     from app.services.scoring_engine import compute_piecewise_health_score

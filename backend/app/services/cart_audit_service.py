@@ -144,13 +144,36 @@ class CartAuditService:
                     if txt.endswith("```"):
                         txt = txt[:-3]
                     parsed = json.loads(txt.strip())
-                    if parsed and isinstance(parsed, dict) and parsed.get("items"):
-                        return parsed
-                    elif parsed and isinstance(parsed, dict):
+                    if parsed and isinstance(parsed, dict) and parsed.get("items") and len(parsed["items"]) > 0:
                         return parsed
                 except Exception as e:
                     logger.warning(f"Cart/bill OCR with {model_name} failed: {e}")
                     continue
+
+        # Fallback: Plain text transcription if structured JSON OCR returned 0 items
+        for cl in self._get_active_clients():
+            if not cl:
+                continue
+            for model_name in GEMINI_ACTIVE_MODELS[:2]:
+                try:
+                    fallback_prompt = (
+                        "Transcribe all visible food products, beverages, groceries, and packaged items in this cart screenshot or supermarket receipt. "
+                        "List one product per line without prices or quantities."
+                    )
+                    res = cl.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                            fallback_prompt
+                        ]
+                    )
+                    raw_text = res.text.strip() if res.text else ""
+                    if raw_text:
+                        parsed_items = self.parse_items_from_text_list(raw_text)
+                        if parsed_items:
+                            return {"store_name": "Store", "items": parsed_items}
+                except Exception as e:
+                    logger.warning(f"Fallback text OCR with {model_name} failed: {e}")
 
         return {"store_name": "Store", "items": []}
 
@@ -551,14 +574,17 @@ class CartAuditService:
             extracted = await self.extract_items_from_images(images_bytes_list)
             store_name = extracted.get("store_name") or "Store"
             raw_items = extracted.get("items") or []
-        elif item_names_text and item_names_text.strip():
+
+        # Seamless fallback: If images produced no items or user also provided text items
+        if not raw_items and item_names_text and item_names_text.strip():
             raw_items = self.parse_items_from_text_list(item_names_text)
             store_name = "Custom Grocery List"
 
         if not raw_items:
             raise ValueError(
-                "No packaged food products or items were detected. "
-                "Please upload cart screenshots, a photo of your supermarket receipt/bill, or enter item names."
+                "No packaged food products or cart items were detected. "
+                "Please ensure the cart screenshot or store receipt clearly shows product titles, "
+                "or switch to the 'Enter Product Names List' tab to type or paste the items directly."
             )
 
         # Concurrently audit items in parallel via asyncio.gather

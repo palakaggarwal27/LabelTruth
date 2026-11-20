@@ -151,13 +151,27 @@ export const auditCart = async (
   if (input.images && input.images.length > 0) {
     input.images.forEach((img, idx) => {
       formData.append('images', img, `cart_capture_${idx}.jpg`);
+      formData.append('files', img, `cart_capture_${idx}.jpg`);
     });
+    // Single-file fallback aliases for backward compatibility:
+    formData.append('image', input.images[0], 'cart_capture_0.jpg');
+    formData.append('file', input.images[0], 'cart_capture_0.jpg');
   } else if (input.imageFile) {
     formData.append('image', input.imageFile, 'cart_capture.jpg');
     formData.append('images', input.imageFile, 'cart_capture.jpg');
+    formData.append('file', input.imageFile, 'cart_capture.jpg');
   }
   if (input.itemNames) {
     formData.append('item_names', input.itemNames);
+    formData.append('items', input.itemNames);
+    formData.append('query', input.itemNames);
+    // Backward compatibility for legacy backends that only accept cart_url:
+    const slugItems = input.itemNames
+      .split(/[\n,]+/)
+      .map(s => s.trim().replace(/\s+/g, '-'))
+      .filter(Boolean)
+      .join(',');
+    formData.append('cart_url', `https://www.zepto.com/cart?items=${encodeURIComponent(slugItems)}`);
   }
   if (input.cartUrl) {
     formData.append('cart_url', input.cartUrl);

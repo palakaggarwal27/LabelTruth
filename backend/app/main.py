@@ -791,8 +791,13 @@ async def compare_products_endpoint(payload: CompareProductsRequest):
 async def audit_cart_endpoint(
     images: Optional[List[UploadFile]] = File(None),
     image: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
     item_names: Optional[str] = Form(None),
+    items: Optional[str] = Form(None),
+    query: Optional[str] = Form(None),
     cart_url: Optional[str] = Form(None),
+    url: Optional[str] = Form(None),
     pincode: str = Form("110001"),
     user_profile: str = Form("{}")
 ):
@@ -803,32 +808,36 @@ async def audit_cart_endpoint(
         profile = UserProfile()
 
     images_bytes_list: List[bytes] = []
-    if images:
-        for img in images:
-            if img and img.filename:
-                try:
-                    b = await img.read()
-                    if b:
-                        images_bytes_list.append(b)
-                except Exception:
-                    pass
-    if image and image.filename:
-        try:
-            b = await image.read()
-            if b and b not in images_bytes_list:
-                images_bytes_list.append(b)
-        except Exception:
-            pass
+    for file_group in [images, files]:
+        if file_group:
+            for f in file_group:
+                if f and f.filename:
+                    try:
+                        b = await f.read()
+                        if b and b not in images_bytes_list:
+                            images_bytes_list.append(b)
+                    except Exception:
+                        pass
+    for single_file in [image, file]:
+        if single_file and single_file.filename:
+            try:
+                b = await single_file.read()
+                if b and b not in images_bytes_list:
+                    images_bytes_list.append(b)
+            except Exception:
+                pass
+
+    effective_item_names = item_names or items or query
+    effective_url = cart_url or url
 
     # Backwards compatibility: If cart_url passed in tests or legacy clients, extract item names
-    effective_item_names = item_names
-    if not effective_item_names and cart_url:
+    if not effective_item_names and effective_url:
         from app.services.tinyfish_service import extract_product_name_from_url
-        if "items=" in cart_url:
-            raw = cart_url.split("items=")[-1].split("&")[0]
+        if "items=" in effective_url:
+            raw = effective_url.split("items=")[-1].split("&")[0]
             effective_item_names = ", ".join([part.replace("-", " ") for part in raw.split(",")])
         else:
-            extracted_name = extract_product_name_from_url(cart_url)
+            extracted_name = extract_product_name_from_url(effective_url)
             if extracted_name:
                 effective_item_names = extracted_name
 
